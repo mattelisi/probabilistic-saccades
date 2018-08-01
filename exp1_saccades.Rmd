@@ -1,0 +1,193 @@
+---
+title: "Exp. 1 - saccade analysis"
+author: "Matteo Lisi"
+date: "8/1/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.path="Figs/",message=FALSE,warning=FALSE)
+```
+
+This file documents the analysis of saccadic eye movements. 
+The preprocessing steps are reported exactly in the article, here I report the statistical analyses starting from a dataset containing saccades informations (onsets, offesets, latency, etc.). It requires some packages (all available on CRAN): lme4, optimx, numDeriv, ggplot2, plus some functions available [here](https://github.com/mattelisi/mlisi).
+The Matlab code for running the experiment that generated the data, as well as the analysis of raw gaze recordings is available [here](https://github.com/mattelisi/gaussianblobnoise-saccade).
+
+
+```{r preliminaries, echo=FALSE, results="hide"}
+rm(list=ls())
+
+# load custom functions
+# library(devtools)
+# install_github("mattelisi/mlisi") # if not already installed
+library(mlisi)
+
+library(ggplot2) # nicer theme
+nice_theme <- theme_bw()+theme(text=element_text(family="Helvetica",size=9),panel.border=element_blank(),strip.background = element_rect(fill="white",color="white",size=0),strip.text=element_text(size=rel(0.8)),panel.grid.major.x=element_blank(),panel.grid.major.y=element_blank(),panel.grid.minor=element_blank(),axis.line.x=element_line(size=.4),axis.line.y=element_line(size=.4),axis.text.x=element_text(size=7,color="black"),axis.text.y=element_text(size=7,color="black"),axis.line=element_line(size=.4), axis.ticks=element_line(color="black"))
+
+# load data
+d <- read.table("data/exp1_saccade.txt",header=T,sep="\t")
+
+# exclude secondary saccades and micro-saccades
+d <- d[which(d$sacType==1),] # this include only the first large saccade leaving fixation area in each trial
+d <- d[which(d$blink==0),] # remove trials with blinks
+
+# prepare data
+#d$tarX <- abs(d$ecc * d$side)
+# any(is.na(d$tarX)) # sanity check
+d$sacXresp <- abs(d$sacxOffset - d$sacxOnset)
+ppd <- 50.1079 # pixel per degree conversion factor
+d$sigma <- d$sigma / ppd
+d$gain <- d$sacXresp/abs(d$ecc * d$side - d$sacxOnset)
+d$sigmaf <- factor(round(d$sigma,digits=1))
+
+# remove "DC component" as in van Opstal & van Gisbergen, 1989, Vision Research, "Scatter in the metrics of saccades and properties of the collicular map"
+for(i in 1:nrow(d)){
+	d$sacxOffset[i] <- d$sacxOffset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+	d$sacxOnset[i] <- d$sacxOnset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+	
+	d$sacyOffset[i] <- d$sacyOffset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+	d$sacyOnset[i] <- d$sacyOnset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+}
+
+# signed saccade error
+d$tarX_s <- (d$ecc * d$side)
+d$sacXresp_s <- (d$sacxOffset - d$sacxOnset)
+d$sacErr <- sqrt((d$sacxOffset-d$tarX_s)^2 + d$sacyOffset^2)
+
+## rt cut off
+# sacOnse is measured with respect to target onset (this is what I want)
+# sacRT wrt is with respect to the previous (micro)saccade
+d$sacRT <- d$sacOnset 
+round(mean(d$sacRT<100,na.rm=T) * 100, digits=4) # this compute the percentage of excluded trials
+d <- d[which(d$sacRT>=100),]
+
+# mistakes (i.e. saccades in the wrong direction)
+mean(sign(d$sacXresp_s) != sign(d$tarX_s),na.rm=T) * 100 # total prop. of directional errors
+d$dir_errors <- sign(d$sacXresp_s) != sign(d$tarX_s)
+tapply(d$dir_errors,list(d$sigmaf,d$id),mean,na.rm=T) * 100 # prop. of directional errors for each subject
+
+# absolute error
+round(mean(d$sacErr>(d$tarX-2),na.rm=T) * 100, digits=2)
+d <- d[which(d$sacErr<(d$tarX-2)),]
+
+# remove unrealistic values of peak velocities (about 0.02%) perhaps due to blinks during the saccade
+mean(d$sacVPeak>5000,na.rm=T) * 100
+d <- d[which(d$sacVPeak<5000),]
+
+# adaptive amplitude filter
+filter_group <- paste(d$id, d$sigmaf, d$tarX, sep="_")
+out_index <- outfilter(d$sacXresp, filter_group, nsd=3)
+round(length(out_index)/nrow(d) * 100,digits=2)
+d <- d[-out_index,]
+
+# normalize saccade responses; again as in van Opstal & van Gisbergen, 1989
+d$sacXresp <- d$tarX * d$gain
+
+# label sessions according to range of the targets
+sess <- d$session
+for(i in 1:nrow(d)){
+	c_i <- with(d[d$vp==d$vp[i] & d$id==d$id[i] & d$session==d$session[i],], (max(tarX)+min(tarX))/2)
+	sess[i] <- ifelse(c_i>10,"large",ifelse(c_i<10,"small",NA))
+}
+d$session_number <- d$session
+d$session <- sess
+
+# drop unnecessary columns
+drops <- c("vp","sameDir","dir_errors","tedfFixOff","gap","sacRT_fd","vpcode","largebef","sacType","sacNumber","sacNumberAfterOnset","sacNumberAfterPrimary","tarx","tary","cxm","cym","tedfFix","tFix","tOn","tOff","tSac","sacAngle1","sacAmp","sacAngle2")
+d <- d[ , !(names(d) %in% drops)]
+```
+
+ALl the cut-off and preliminary operations are recorded the .Rmd script (commands not shown in the final output). The dataset ready for the analysis is the following. It includes only primary saccades, secondary saccades will be analysed later.
+
+```{r showdataset}
+str(d)
+```
+
+## Explorative plots
+(Some of these plots may not be included in the final version of the article.)
+
+This plot show the cumulative distribution of saccade amplitudes (horizontal). 
+The vertical dashed line indicate the target distance.
+
+```{r cumulative, echo=FALSE, fig.width=4, fig.height=5}
+ggplot(d, aes(x=sacXresp,group=sigmaf,color=sigmaf))+geom_vline(aes(xintercept=tarX),color="black",lty=2,size=0.4)+ stat_ecdf(geom = "step",size=0.6)+facet_grid(tarX~.)+nice_theme+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma[blob], " [deg]")))+labs(y="cumulative probability",x="saccade amplitude [deg]")+scale_x_continuous(limits=c(5.5,12.5),breaks=seq(5,13,1))
+```
+
+
+Average saccade amplitudes
+
+```{r ampli, echo=FALSE, fig.width=3.5, fig.height=2.8}
+dag <- aggregate(sacXresp ~ sigmaf+id +tarX  , d,  mean)
+dag2 <- aggregate(sacXresp ~ sigmaf +tarX  , dag ,  mean)
+dag2$sacXresp_se <- aggregate(sacXresp ~ sigmaf+tarX, dag,  bootMeanSE)$sacXresp
+ggplot(dag2, aes(x=tarX,y=sacXresp,ymin=sacXresp-sacXresp_se,ymax=sacXresp+sacXresp_se,color=sigmaf,group=sigmaf))+geom_abline(intercept=0,slope=1,lty=2,size=0.2)+geom_errorbar(width=0,alpha=1)+geom_line()+geom_point(size=1.5)+nice_theme+labs(x="target distance [deg]", y="saccade amplitude [deg]")+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma[blob], " [deg]")))+scale_x_continuous(limits=c(7.5,12.5))+scale_y_continuous(limits=c(6.8,11.5))
+```
+
+Variability of saccade amplitude gain
+
+```{r spread, echo=FALSE, fig.width=1.6, fig.height=1.6}
+dag <- aggregate(gain ~ sigmaf+sigma+id , d,  sd)
+dag2 <- aggregate(gain ~ sigmaf+sigma , dag ,  mean)
+dag2$gain_se <- aggregate(gain ~ sigmaf+sigma, dag,  bootMeanSE)$gain
+ggplot(dag2, aes(x=sigma,y=gain,ymin=gain-gain_se,ymax=gain+gain_se,color=sigmaf,group=1))+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y="saccade variability [gain SD]")+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+scale_x_continuous(limits=c(0.2,1.61),breaks=c(0.3,0.9,1.5))
+```
+
+
+## Statistical analyses 
+
+### Positional uncertainty increases saccade variability and hypometria
+
+Same as reported in article.
+Repeated-measures ANOVA on average saccade variability.
+```{r}
+summary(aov(gain~sigmaf+Error(id/sigmaf), aggregate(gain~sigmaf+sigma+id, d, sd)))
+```
+
+Linear mixed-effect model fit on saccade amplitudes.
+```{r}
+library(lme4)
+m1 <- lmer(sacXresp ~ tarX * sigmaf + (tarX + sigmaf |id), d)
+summary(m1)
+```
+
+Correlation between changes in variability and undershoot bias across observers.
+```{r, corr1}
+# the change in undershoot bias is measured by the change in the LMM linear coefficient for each participants
+gain_change <- fixef(m1)[6]+ranef(m1)$id[,4]
+
+# sanity check: OK
+#all(aggregate(gain ~ sigmaf+id, d[d$sigmaf=="1.5",],  sd)$id==row.names(ranef(m1)$id))
+
+# the difference in variability is measured by the difference in variance between sigma=1.5 and sigma=0.3
+var_increase <- aggregate(gain ~ sigmaf+id, d[d$sigmaf=="1.5",],  var)$gain - aggregate(gain ~ sigmaf+id, d[d$sigmaf=="0.3",],  var)$gain
+
+# Pearson correlation
+cor.test(var_increase, gain_change)
+```
+
+Analysis of saccade latency: first split the data according to the quartiles of individual saccade latencies, then run ANOVA test.
+```{r}
+d$RTbin <- NA
+d$RTbin_mean <- NA
+for(i in unique(d$id)){
+for(s_i in unique(d$sigmaf)){
+	d$RTbin[d$id==i & d$sigmaf==s_i]<-cut(d$sacRT[d$id==i & d$sigmaf==s_i],breaks=quantile(d$sacRT[d$id==i & d$sigmaf==s_i]),labels=c("1st quartile","2nd quartile","3rd quartile","4th quartile"),names=T)
+	for(q_i in unique(d$RTbin[d$id==i & d$sigmaf==s_i])){
+		d$RTbin_mean[d$id==i & d$RTbin==q_i & d$sigmaf==s_i] <- mean(d$sacRT[d$id==i & d$RTbin==q_i & d$sigmaf==s_i],na.rm=T)
+	}
+}
+}
+
+# ANOVA with gain as dependent variable
+dag <- aggregate(gain ~ sigmaf+id + RTbin , d,  mean)
+dag$RTbin <- factor(dag$RTbin)
+summary(aov(gain~sigmaf*RTbin + Error(id/(sigmaf*RTbin)), dag ))
+
+
+# ANOVA with gain SD as dependent variable
+dag <- aggregate(gain ~ sigmaf+id + RTbin , d,  sd)
+dag$RTbin <- factor(dag$RTbin)
+summary(aov(gain~sigmaf*RTbin + Error(id/(sigmaf*RTbin)), dag ))
+```
+

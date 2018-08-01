@@ -1,0 +1,187 @@
+---
+title: "Exp. 1 - perception"
+author: "Matteo Lisi"
+date: "8/1/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.path="Figs/",message=FALSE,warning=FALSE)
+```
+
+This file documents the analysis of perceptual performance.
+
+```{r preliminaries, echo=FALSE}
+rm(list=ls())
+d <- read.table("data/exp1_perception.txt",header=T,sep="\t")
+d$condition <- factor(round(d$sigma,digits=1))
+d$x <- d$sdE
+d$r <- d$rr
+
+# load custom functions
+library(devtools)
+install_github("mattelisi/mlisi")
+library(mlisi)
+
+library(ggplot2) # nicer theme
+nice_theme <- theme_bw()+theme(text=element_text(family="Helvetica",size=9),panel.border=element_blank(),strip.background = element_rect(fill="white",color="white",size=0),strip.text=element_text(size=rel(0.8)),panel.grid.major.x=element_blank(),panel.grid.major.y=element_blank(),panel.grid.minor=element_blank(),axis.line.x=element_line(size=.4),axis.line.y=element_line(size=.4),axis.text.x=element_text(size=7,color="black"),axis.text.y=element_text(size=7,color="black"),axis.line=element_line(size=.4), axis.ticks=element_line(color="black"))
+```
+
+This first part of the code (hidden in the output, check the .Rmd file for details) compute the JND estimates and the AIC values for the three psychometric models described in the main text. It requires some packages (all available on CRAN), such as optimx, numDeriv, ggplot2, plus some functions available [here](https://github.com/mattelisi/mlisi).
+The Matlab code for running the experiment is available [here](https://github.com/mattelisi/gaussianblobnoise-bisection-adaptiveQuestPlus).
+
+```{r jnd1, echo=FALSE, results="hide"}
+sjs <- unique(d$ID)
+
+## model with fixed lapse rate across conditions
+
+start_p <- c(rep(c(0,1),3), 0) # start parameters and boundaries
+l_b <- c(rep(c(-5, 0.05),3), 0)
+u_b <- c(rep(c(5, 20),3), 0.5)
+jnd_all <- {}
+for(j in sjs){
+	ftm <- optimx::optimx(par = start_p, lnorm_3par_multi , d=d[d$ID==j,],  method="bobyqa", lower =l_b, upper =u_b)
+	outV <- unlist(matrix(ftm [1,1:7],1,7))
+	outHessian <- numDeriv::hessian(lnorm_3par_multi, outV, d=d[d$ID==j,], method.args=list(r=6))
+	lik_ <- ftm$value
+	aic_ <- 2*7 + 2*lik_
+  par_se <- sqrt(diag(solve(outHessian))) # compute SEs
+	jnd_s <- data.frame(sigma=sort(unique(d$sigma)),condition = as.factor(round(sort(unique(d$sigma)),digits=1)), jnd = outV[c(2,4,6)], se = par_se[c(2,4,6)], id = j, mu= outV[c(1,3,5)], mu_se=par_se[c(1,3,5)], p_lapse = outV[7], p_lapse_se = par_se[7],  aic = aic_)
+	jnd_all <- rbind(jnd_all, jnd_s) # save res
+}
+jnd_all$model <- "fixed lapse"
+write.table(jnd_all,file="jnd_qp3",quote=F,sep="\t",row.names=F)
+
+## 3-parameters functions; lapse rate contingent on condition
+c_i <- unique(d$condition)
+start_p <- c(0, 1, 0.01)
+l_b <- c(-5, 0.05, 0)
+u_b <- c(5,  10, 0.5)
+jnd_all <- {}
+for(i in sjs){
+	lik_total <- 0
+	for(c in c_i){
+		d_s <- d[d$ID==i & d$condition==c,]
+		ftm <- optimx::optimx(par = start_p, lnorm_3par , d=d_s,  method="bobyqa", lower =l_b, upper =u_b)
+		outV <- unlist(matrix(ftm [1,1:3],1,3))
+		outHessian <- numDeriv::hessian(lnorm_3par, outV, d=d_s, method.args=list(r=6))
+		lik_ <- ftm$value
+		lik_total <- lik_total + lik_
+	  par_se <- sqrt(diag(solve(outHessian))) # compute SEs
+		jnd_s <- data.frame(sigma=unique(d_s$sigma), condition = c, jnd = outV[2], se = par_se[2], id = i, mu= outV[1], mu_se=par_se[1], p_lapse=outV[3], p_lapse_se = outV[3], aic=NaN)
+		jnd_all <- rbind(jnd_all, jnd_s)
+	}
+	jnd_all$aic[jnd_all$id==i] <- 2*9 + 2*lik_total
+}
+jnd_all$model <- "varying lapse"
+write.table(jnd_all,file="jnd_qp3lapse",quote=F,sep="\t",row.names=F)
+
+## 2-parameters functions (lapse rate fixed at 0)
+# in this case I am using R glm function, so these are some helpers  
+library(boot)
+boot_replication <- 500
+# extract psychometric parameters from fitted GLM
+par.fun <- function(d){
+	m0 <- glm(r~x*condition, family=binomial(probit),d)
+	beta_l <- coef(m0)[c(1,3,4)]
+	beta_s <- coef(m0)[c(2,5,6)]
+	beta_l <- itersum(beta_l)
+	beta_s <- itersum(beta_s)
+	mu <- -beta_l/beta_s
+	sigma <- 1/beta_s
+	return(c(mu,sigma))
+}
+# This function simulate the model, and is used for bootstrapping
+par.rg <- function(dat, pv){
+	lvls <- levels(dat$condition)
+	mu <- pv[1:length(lvls)]
+	sigma <- pv[(length(lvls)+1):length(pv)]
+	outd <- dat
+	for(c in 1:length(lvls)){
+		subd <- dat[dat$condition==lvls[c],]
+		outd$r[outd$condition==lvls[c]] <- as.numeric(rnorm(nrow(subd), mean=subd$x, sd=sigma[c]) > mu[c])
+	}
+	return(outd)	
+}
+
+jnd_all_2 <- {}
+for(j in sjs){
+	m0 <- glm(r~x*condition, family=binomial(probit),d[d$ID==j,])
+	par_v <- par.fun(d[d$ID==j,])
+	par_boot <- boot(d[d$ID==j,], par.fun, R = boot_replication, sim = "parametric", ran.gen = par.rg, mle = par_v)
+	par_se <- apply(par_boot$t,2,sd)
+	jnd_s <- data.frame(sigma=sort(unique(d$sigma)),condition = as.factor(round(sort(unique(d$sigma)),digits=1)), jnd = par_v[4:6], se = par_se[4:6], id = j, mu= par_v[1:3], mu_se=par_se[1:3], aic = AIC(m0) )
+	jnd_all_2 <- rbind(jnd_all_2, jnd_s)
+}
+jnd_all_2$model <- "simple"
+write.table(jnd_all_2,file="jnd_qp2",quote=F,sep="\t",row.names=F)
+
+
+## Now this merge the results into a single table, that will be used in the further analyses
+jnd_all_2 <- read.table("jnd_qp2", header=T, sep="\t") 
+jnd_all_fixLapse <- read.table("jnd_qp3", header=T, sep="\t")
+jnd_all_3Lapse <- read.table("jnd_qp3lapse", header=T, sep="\t")
+jnd_all_2$p_lapse <- NaN
+jnd_all_2$p_lapse_se <- NaN
+jnd_all_2$dof <- 6 # degrees of fredom
+jnd_all_fixLapse$dof <- 7
+jnd_all_3Lapse$dof <- 9
+jnd_3 <- rbind(jnd_all_2, jnd_all_fixLapse, jnd_all_3Lapse)
+
+write.table(jnd_3,file="data/jnd_allModels",quote=F,sep="\t",row.names=F)
+file.remove(c("jnd_qp2","jnd_qp3","jnd_qp3lapse"))
+
+```
+
+Now we can check which is the winning model for individual subjects.
+
+```{r test1}
+jnd_av <- aggregate(cbind(aic, dof) ~ model + id, jnd_3, mean)
+jnd_av$id <- factor(as.character(jnd_av$id))
+tab_s <- with(jnd_av, tapply(aic, list(model,id), mean))
+
+# for how many sjs the "fixed lapse" model is better than "varying lapse"?
+sum(tab_s["fixed lapse",]<tab_s["varying lapse",]) 
+
+# for how many sjs the "simple" model is better than "fixed lapse"?
+sum(tab_s["simple",]<tab_s["fixed lapse",]) 
+```
+
+The next chunk of code average the estimates according to their Akaike weight, and plot the averaged estimates of JND and PSE
+
+```{r plot, fig.width=3, fig.height=2}
+jnd_smpl <- jnd_3[jnd_3$model=="simple",]
+jnd_fixd <- jnd_3[jnd_3$model=="fixed lapse",]
+jnd_vary <- jnd_3[jnd_3$model=="varying lapse",]
+
+den <- exp(-0.5*jnd_smpl$aic)+exp(-0.5*jnd_fixd$aic)+exp(-0.5*jnd_vary$aic) # denominator
+
+jnd_smpl$aic_w <- exp(-0.5*jnd_smpl$aic) / den # AKaike weights
+jnd_fixd$aic_w <- exp(-0.5*jnd_fixd$aic) / den
+jnd_vary$aic_w <- exp(-0.5*jnd_vary$aic) / den
+
+# a bit of rearranging for plotting with ggplot2
+jnd_w <- data.frame(sigma=jnd_smpl$sigma, condition=jnd_smpl$condition,id=jnd_smpl$id)
+jnd_w$jnd <- jnd_smpl$aic_w*jnd_smpl$jnd + jnd_fixd$aic_w*jnd_fixd$jnd + jnd_vary$aic_w*jnd_vary$jnd
+jnd_w$mu <- jnd_smpl$aic_w*jnd_smpl$mu + jnd_fixd$aic_w*jnd_fixd$mu + jnd_vary$aic_w*jnd_vary$mu
+jnd_w_av1 <- aggregate(jnd ~ sigma+condition, jnd_w, mean)
+jnd_w_av1$se <- aggregate(jnd ~ sigma+condition, jnd_w, bootMeanSE,nsim=5000)$jnd # bootstrapped SEM, 5000rep, using mlisi package
+jnd_w_av1$par <- "JND"
+colnames(jnd_w_av1)[3] <- "hat"
+jnd_w_av2 <- aggregate(mu ~ sigma+condition, jnd_w, mean)
+jnd_w_av2$se <- aggregate(mu ~ sigma+condition, jnd_w, bootMeanSE,nsim=5000)$mu
+jnd_w_av2$par <- "PSE"
+colnames(jnd_w_av2)[3] <- "hat"
+jnd_w_av <- rbind(jnd_w_av1, jnd_w_av2)
+
+# plot
+ggplot(jnd_w_av, aes(x=sigma,y=hat, ymin=hat-se,ymax=hat+se,group=par,color=par))+geom_line()+geom_point(size=2)+nice_theme+labs(y="[dva]", x=expression(paste(sigma[blob], " [dva]"))) +geom_errorbar(width=0.05)+scale_y_continuous(limits=c(-0.2,2.1))+scale_color_manual(values=c("black","dark grey"),name="")+scale_x_continuous(limits=c(0.2,1.8))
+```
+
+Finally, print a table with average values and compute a repeated-measures ANOVA
+
+```{r stats}
+print(jnd_w_av,digits=2)
+summary(aov(jnd~condition + Error(id), jnd_w)) # ANOVA
+```
+
