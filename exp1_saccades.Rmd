@@ -134,6 +134,33 @@ ggplot(dag2, aes(x=sigma,y=gain,ymin=gain-gain_se,ymax=gain+gain_se,color=sigmaf
 ```
 
 
+Saccade gain as a function of saccadic latency. Horizontal coordinates are computed by splitting the data according to the quartile of the latency distributions of each observer (for each observer I compute the mean latency in each quartile, then average the results across observers).
+
+```{r}
+# This assign each observation to a quartile of individual latency distribution
+d$RTbin <- NA
+d$RTbin_mean <- NA
+for(i in unique(d$id)){
+for(s_i in unique(d$sigmaf)){
+	d$RTbin[d$id==i & d$sigmaf==s_i]<-cut(d$sacRT[d$id==i & d$sigmaf==s_i],breaks=quantile(d$sacRT[d$id==i & d$sigmaf==s_i]),labels=c("1st quartile","2nd quartile","3rd quartile","4th quartile"),names=T)
+	for(q_i in unique(d$RTbin[d$id==i & d$sigmaf==s_i])){
+		d$RTbin_mean[d$id==i & d$RTbin==q_i & d$sigmaf==s_i] <- mean(d$sacRT[d$id==i & d$RTbin==q_i & d$sigmaf==s_i],na.rm=T)
+	}
+}
+}
+```
+
+```{r latency-gain, echo=FALSE, fig.width=3, fig.height=2}
+dag <- aggregate(cbind(gain,RTbin_mean) ~ sigmaf+id+ RTbin , d,  mean)
+dag2 <- aggregate(cbind(gain, RTbin_mean) ~ sigmaf + RTbin , dag ,  mean)
+dag2$se <- aggregate(gain ~ sigmaf + RTbin, dag,  bootMeanSE)$gain
+dag2$rt_se <- aggregate(RTbin_mean ~ sigmaf + RTbin, dag,  bootMeanSE)$RTbin_mean
+ggplot(dag2, aes(x=RTbin_mean,y=gain,ymin=gain-se,ymax=gain+se,color=sigmaf,group=sigmaf))+geom_hline(aes(yintercept=1),lty=2,size=0.4)+geom_errorbar(width=0,alpha=1)+geom_line()+geom_point(size=1.5)+nice_theme+labs(x="saccade latency [ms]", y="saccade gain")+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma[blob], " [deg]")))+scale_y_continuous(breaks=seq(0,1,0.05))+scale_x_continuous(breaks=seq(100,600,50))
+
+```
+
+
+
 ## Statistical analyses 
 
 ### Positional uncertainty increases saccade variability and hypometria
@@ -167,18 +194,8 @@ cor.test(var_increase, gain_change)
 ```
 
 Analysis of saccade latency: first split the data according to the quartiles of individual saccade latencies, then run ANOVA test.
-```{r}
-d$RTbin <- NA
-d$RTbin_mean <- NA
-for(i in unique(d$id)){
-for(s_i in unique(d$sigmaf)){
-	d$RTbin[d$id==i & d$sigmaf==s_i]<-cut(d$sacRT[d$id==i & d$sigmaf==s_i],breaks=quantile(d$sacRT[d$id==i & d$sigmaf==s_i]),labels=c("1st quartile","2nd quartile","3rd quartile","4th quartile"),names=T)
-	for(q_i in unique(d$RTbin[d$id==i & d$sigmaf==s_i])){
-		d$RTbin_mean[d$id==i & d$RTbin==q_i & d$sigmaf==s_i] <- mean(d$sacRT[d$id==i & d$RTbin==q_i & d$sigmaf==s_i],na.rm=T)
-	}
-}
-}
 
+```{r}
 # ANOVA with gain as dependent variable
 dag <- aggregate(gain ~ sigmaf+id + RTbin , d,  mean)
 dag$RTbin <- factor(dag$RTbin)
@@ -189,5 +206,318 @@ summary(aov(gain~sigmaf*RTbin + Error(id/(sigmaf*RTbin)), dag ))
 dag <- aggregate(gain ~ sigmaf+id + RTbin , d,  sd)
 dag$RTbin <- factor(dag$RTbin)
 summary(aov(gain~sigmaf*RTbin + Error(id/(sigmaf*RTbin)), dag ))
+```
+
+### Saccadic range-effect depends on position uncertainty
+
+Here are reported the analysis of the range-effect, a form of central bias.
+
+First, we check whether saccade amplitudes toward the intermediate target (at 10deg eccentricity, which was present in both sessions) are influenced by the range. This test is motivated specifically by recent studies that reported no range effect for dot-like, clearly visible targets. We do that with a two-tailed t-test.
+```{r range-test-1}
+dag <- aggregate(sacXresp ~ sigmaf+sigma + session +tarX + id, d, mean)
+l_sx <- with(dag,sacXresp[sigmaf=="0.3" & session=="large" & tarX==10])
+s_sx <- with(dag,sacXresp[sigmaf=="0.3" & session=="small" & tarX==10])
+t.test(l_sx-s_sx, var.equal=T)
+```
+The test is not significant, indicating that a range-effect is not present when uncertainty is small (i.e., when $sigma=0.3$).
+We can check whether the range-effect, as measured by the differences across sessions in the amplitudes of saccades made to the 10 deg target, varies with $sigma$. We use a repeated-measures ANOVA.
+```{r}
+summary(aov(sacXresp ~ sigma*session + Error(id/(sigmaf*session)), dag[dag$tarX==10,]))
+```
+
+The ANOVA indicates an interaction between $sigma$ (three levels, 0.3, 0.9 and 1.5 deg) and the session (large vs. small eccentricity range). 
+
+```{r range-prepare, echo=FALSE, results=FALSE}
+# tapply(d$session_number, list(d$tarX, d$session, d$id),mean) # sanity check
+# This implements the correction to adjust for baseline differences (see Material and Methods, main text)
+
+d$sacXresp_c <- d$sacXresp
+
+#barG <- mean(aggregate(gain ~ id, d[d$sigmaf=="0.3",], mean)$gain)
+#Gs1 <- mean(aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==1,], mean)$gain)
+#Gs2 <- mean(aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==2,], mean)$gain)
+
+barG <- aggregate(gain ~ id, d[d$sigmaf=="0.3",], mean)
+Gs1 <- aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==1,], mean)
+Gs2 <- aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==2,], mean)
+
+# for(i in 1:nrow(d)){
+#     if(d$session_number[i]==1){
+# 		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG-Gs1)
+# 	}else{
+# 		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG-Gs2)
+# 	}
+# }
+
+for(i in 1:nrow(d)){
+    if(d$session_number[i]==1){
+		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG$gain[barG$id==d$id[i]]-Gs1$gain[Gs1$id==d$id[i]])
+	}else{
+		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG$gain[barG$id==d$id[i]]-Gs2$gain[Gs2$id==d$id[i]])
+	}
+}
+
+dag <- aggregate(cbind(sacXresp_c, sacXresp, gain) ~ tarX +sigmaf+sigma + session + id, d, mean)
+dag$se <- aggregate(sacXresp_c ~ tarX +sigmaf +sigma + session + id, d, bootMeanSE)$sacXresp_c
+
+# prepare the predictors for fitting the model
+d$mean_ecc <- ifelse(d$session=="large",11,9)
+d$cond1 <- dummy(d$sigmaf)[,"0.9"]
+d$cond2 <- dummy(d$sigmaf)[,"1.5"]
+d$ecc_diff <- d$mean_ecc - d$ecc
+
+#--------------------------------------------------------------------------------------------#
+### OLD CODE FOR FITTING THE MODEL WITH LMER (all conditions together) ###
+# the problem with this are convergence warnings, one is forced to exclude higher-order
+# interactions from the random effects
+# compAlphas <- function(.) {
+# tab <- summary(.)$coefficients
+# a1 <- tab["ecc_diff",1] / tab["ecc",1]
+# a2 <- (tab["ecc_diff",1]+tab["cond1:ecc_diff",1]) / (tab["ecc",1]+tab["ecc:cond1",1])
+# a3 <- (tab["ecc_diff",1]+tab["cond2:ecc_diff",1]) / (tab["ecc",1]+tab["ecc:cond2",1])
+# alphas <- c(a1,a2,a3)
+# names(alphas) <- c("a1","a2","a3")
+# return(alphas)
+# }
+# lmm0 <- lmer(sacXresp_c ~ ecc + cond1 + cond2 + ecc_diff + ecc:cond1 + ecc:cond2 + ecc_diff:cond1 + ecc_diff:cond2 + (ecc + cond1 + cond2 + ecc_diff + ecc:cond1 + ecc:cond2 + ecc_diff:cond1 + ecc_diff:cond2 || id), d)
+# # + ecc_diff:cond1 + ecc_diff:cond2
+# # , control=lmerControl(optCtrl =list(maxfun=1e30))
+# compAlphas(lmm0)
+
+#--------------------------------------------------------------------------------------------#
+### OLD CODE FOR FITTING THE MODEL WITH LMER (split conditions) ###
+# comp1Alpha <- function(.) {
+#   tab <- summary(.)$coefficients
+#   a1 <- tab["ecc_diff",1] / tab["ecc",1]
+#   return(a1)
+# }
+# Workaround to the convergence warnings, however can't take correlation across 
+# conditions into account
+# mm_a1 <- lmer(sacXresp_c ~ ecc + ecc_diff + (ecc + ecc_diff | id), d[d$sigmaf=="0.3",])
+# comp1Alpha(mm_a1)
+# boot_a1 <- bootMer(mm_a1, comp1Alpha, 1000,.progress="txt")
+# mm_a2 <- lmer(sacXresp_c ~ ecc + ecc_diff + (ecc + ecc_diff | id), d[d$sigmaf=="0.9",])
+# comp1Alpha(mm_a2)
+# boot_a2 <- bootMer(mm_a2, comp1Alpha, 1000,.progress="txt")
+# mm_a3 <- lmer(sacXresp_c ~ ecc + ecc_diff + (ecc + ecc_diff | id), d[d$sigmaf=="1.5",])
+# comp1Alpha(mm_a3)
+# boot_a3 <- bootMer(mm_a3, comp1Alpha, 500,.progress="txt")
+# alpha_d <- data.frame(alpha=c(comp1Alpha(mm_a1),comp1Alpha(mm_a2),comp1Alpha(mm_a3)),
+	# sigma=sort(unique(d$sigma)),
+	# se = c(sd(boot_a1$t), sd(boot_a2$t), sd(boot_a3$t)),
+	# lb = c(quantile(boot_a1$t,prob=0.05/2), quantile(boot_a2$t,prob=0.05/2), quantile(boot_a3$t,prob=0.05/2)),
+	# ub = c(quantile(boot_a1$t,prob=1-0.05/2), quantile(boot_a2$t,prob=1-0.05/2), quantile(boot_a3$t,prob=1-0.05/2)))
+# save(mm_a1, mm_a2, mm_a3, boot_a1, boot_a2, boot_a3, alpha_d, file="range_exp1.RData")
+#load("range_exp1.RData")
+#print(round(alpha_d, digits=2))
+
+#--------------------------------------------------------------------------------------------#
+### FIT INDIVIDUAL SUBJECTS SEPARATELY ###
+# library(lme4)
+# mList <- lmList(sacXresp_c ~ ecc + cond1 + cond2 + ecc_diff 
+#                         + ecc:cond1 + ecc:cond2 
+#                         + ecc_diff:cond1 + ecc_diff:cond2 | id, d[d$id!="mm",])
+# tab_coeff <- coef(mList)
+# tab_coeff$a1 <- tab_coeff$"ecc_diff" / tab_coeff$"ecc"
+# tab_coeff$a2 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond1:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond1")
+# tab_coeff$a3 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond2:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond2")
+# 
+# mean(tab_coeff$a1)
+# mean(tab_coeff$a2)
+# mean(tab_coeff$a3)
+# bootMeanCI(tab_coeff$a3)
+
+#--------------------------------------------------------------------------------------------#
+### SUBJECT BY SUBJECT FIT with alpha in (0,1) ###
+# range effect analysis
+# maximum likelihood function for fitting regression models at individual level
+# 
+
+# this compute the predictions for a single conditions
+# d$ecc0: the target distance at current trial
+# d$mean_ecc: the distance at previous trial or the average distance in the session
+# parameter vector p:
+# p[1]: intercept
+# p[2]: slope
+# p[3]: mixing parameter (alpha)
+# pred_single <- function(p, d){
+# 	A <- p[1] + p[2] * (p[3]*d$tarX + (1-p[3])*d$mean_ecc)
+# 	return(A)
+# }
+
+# this compute predictions for multiple comditions:
+# - a baseline condition (sigma=0.3)
+# - d$cond1: dummy variable that code for sigma=0.9
+# - d$cond2: dummy variable that code for sigma=1.5
+# parameter vector p:
+# p[1]: intercept (sigma=0.3)
+# p[2]: itercept_sig09 - intercept
+# p[3]: itercept_sig15 - intercept
+# p[4]: slope (sigma=0.3)
+# p[5]: slope_sig09 - slope
+# p[6]: slope_sig15 - slope
+# p[7]: alpha (sigma=0.3)
+# p[8]: alpha_sig09 		##- alpha
+# p[9]: alpha_sig15 		##- alpha
+# pred_multi <- function(p, d){
+# 	beta_0 <- p[1] + p[2]*d$cond1 + p[3]*d$cond2
+# 	beta_1 <- p[4] + p[5]*d$cond1 + p[6]*d$cond2
+# 	alpha <- ifelse(d$cond1, p[8], ifelse(d$cond2, p[9], p[7]))
+# 	A <- beta_0 + beta_1 * (alpha*d$mean_ecc + (1-alpha)*d$tarX)
+# 	return(A)
+# }
+
+# loss function for optimization
+# squared_loss_multi <- function(p, d){
+# 	return(sum((d$sacXresp_c - pred_multi(p,d))^2))
+# }
+
+# wrapper for model fitting
+# fit_single <- function(d){
+# 	start_p <- c(0,0,0,1,0,0,1,0,0)
+# 	lb <- c(-50,-50,-50,-5,-5,-5,0,0,0)
+# 	ub <- c(50,50,50,5,5,5,1,1,1)
+# 	m <- optim(par = start_p, squared_loss_multi, d=d, hessian=T, control=list(maxit=1e5), method="L-BFGS-B", lower=lb, upper=ub)
+# 	# unconstrained
+# 	#m <- optim(par = start_p, squared_loss_multi, d=d, hessian=T, control=list(maxit=1e8))
+# 	par_names <- c("intercept","sig09","sig15","ecc0","ecc0_sig09","ecc0_sig15", "alpha_03", "alpha_09", "alpha_15")
+# 	se_names <- paste(par_names,"_se",sep="")
+# 	r_squared <- 1 - squared_loss_multi(m$par, d)/sum((d$sacXresp-mean(d$sacXresp))^2)
+# 	r_squared_simple <- summary(lm(sacXresp_c ~ tarX + cond1 + cond2 + tarX:cond1 + tarX:cond2, d))$r.squared
+# 	data.frame(matrix(data=c(m$par, sqrt(diag(solve(m$hessian))), r_squared, r_squared_simple), nrow=1, ncol=20, dimnames=list(NULL,c(par_names, se_names, "r.squared", "r.squared.simple"))))
+# }
+
+# do optimization subject by subject
+# dfit2 <- {}
+# for(i in unique(d$id)){
+# 	dfit2 <- rbind(dfit2, fit_single(d[d$id==i,]))
+# }
+# 
+# mean(dfit2$alpha_03)
+# bootMeanSE(dfit2$alpha_03)
+# bootMeanCI(dfit2$alpha_03)
+# 
+# mean(dfit2$alpha_09)
+# bootMeanSE(dfit2$alpha_09)
+# bootMeanCI(dfit2$alpha_09)
+# 
+# mean(dfit2$alpha_15)
+# bootMeanSE(dfit2$alpha_15)
+# bootMeanCI(dfit2$alpha_15)
+```
+
+The interaction can be seen by plotting saccade amplitudes as a function of target distance and split by eccentricity range and values of $sigma$. To reduce any confounds for this analysis we corrected individual values of saccade amplitudes by the mean effect of session order (see Methods section in the article for details). 
+
+```{r plot-range-0, echo=FALSE, fig.width=4, fig.height=2.5}
+dag2 <- aggregate(sacXresp_c ~ tarX +sigmaf + session, dag, mean)
+dag2$se <- aggregate(sacXresp_c ~ tarX +sigmaf + session, dag, bootMeanSE)$sacXresp_c
+ggplot(dag2, aes(x=tarX,y=sacXresp_c,ymin=sacXresp_c-se,ymax=sacXresp_c+se,color=factor(session),group=session))+geom_abline(intercept=0,slope=1,lty=2,col="black",size=0.4)+geom_line()+geom_errorbar(width=0,alpha=1)+geom_point(pch=19)+nice_theme+scale_color_manual(values=c("black","dark grey"),name="eccentricity\nrange")+labs(x="target distance [deg]", y="saccade amplitude [deg]")+facet_grid(.~sigmaf)+scale_y_continuous(breaks=3:12,limits=c(6.8,11.5))
+```
+
+
+We assumed that range effect is a form of central bias, and estimated the amout of compression using a regression approach, where the saccade amplitude at trial $i$, $S_i$, is taken to be a linear function of a combination of mean eccentricity in the block, $\bar E$, and of the eccentricity at the current trial $E_i$. The model can be expressed as:
+$$\begin{align}
+  {\hat S}_i &= {\beta _0} + {\beta _1}\left[ {\alpha \bar E + \left( {1 - \alpha } \right){E_i}} \right] \\ 
+   &= {\beta _0} + {\beta _1}\left[ {\alpha \bar E + E - \alpha {E_i}} \right] \\ 
+   &= {\beta _0} + {\beta _1}{E_i} - {\beta _1}\alpha \left( {\bar E - {E_i}} \right) \\ 
+   &= {\beta _0} + {\beta _1}{E_i} - {\beta _2}\left( {\bar E - {E_i}} \right) \\ 
+\end{align}$$
+We have expanded its formula to show that it can be estimated as a traditional regression model, with the current eccentricity $E_i$ and the difference of the current eccentricity from the mean of the session ${\bar E - {E_i}}$ as linear predictors. The parameter $\alpha$, which indicate the proportion of compression, is the obtained as the ratio of the two coefficients $\alpha=\frac{\beta_2}{\beta_1}$. 
+
+We have estimated a multilevel version of this model, with a fully parametrized variance-covariance matrix, using Stan (http://mc-stan.org) through its R interfaces RStan(http://mc-stan.org/rstan/) and rstanarm (http://mc-stan.org/rstanarm/index.html). We have used MCMC sampling (specifically Hamiltonian Monte Carlo, as implemented in Stan) to draw samples from the posterior distribution of the 
+
+```{r range-model}
+library(rstanarm)
+# ecc_diff is the difference from the mean, \bar E - E_i
+# cond1 and cond2 are dummy variables that indicate the conditions with sigma=0.9 and 1.5, respectively
+
+## Set weakly informative priors.
+#
+# Thecoefficient of the model (fixed-effects) will be:
+# [1] "(Intercept)"    "ecc"            "cond1"          "cond2"         
+# [5] "ecc_diff"       "ecc:cond1"      "ecc:cond2"      "cond1:ecc_diff"
+# [9] "cond2:ecc_diff"
+#
+# The priors are normal, roughly based on the estimates of the linear model (m1) above
+# but with quite large standard deviations.
+# The prior for ecc_diff are weakly regularizing and centered on 0
+# For example: the prior for the gain in the condition with smallest uncertainty 
+# is a Normal centered at 0.9, with a standard deviation of 1.5
+#weak_prior_intercept = normal(location=0, scale=3, autoscale=F)
+#                                 2  3  4  5      6      7  8  9
+#weakPriors <- normal(location=c(0.9, 0, 1, 0, -0.05, -0.15, 0, 0),
+#                     scale =  c(1.5, 1, 1, 1,     1,     1, 2, 2), autoscale=F)
+
+# I also set a weakly regularizing prior for the variance covariance matrix
+# with regularization > 1 the mode of the prior is at the identity matrix
+# e.g. see here: https://www.psychstatistics.com/2014/12/27/d-lkj-priors/
+# weakVarCov <- lkj(regularization = 1.5) # cause problems, leave default
+
+# fit the model (4 chains, 1000 samples each)
+if(!file.exists("exp1_rangeFit_v2.RData")){
+  lmm0_HMC <- stan_lmer(sacXresp_c ~ ecc + cond1 + cond2 + ecc_diff 
+                        + ecc:cond1 + ecc:cond2 
+                        + ecc_diff:cond1 + ecc_diff:cond2 
+                        + (ecc + cond1 + cond2 + ecc_diff 
+                           + ecc:cond1 + ecc:cond2 
+                           + ecc_diff:cond1 + ecc_diff:cond2 | id), 
+                        data = d, cores = 4, iter = 500, chain=4) 
+                        #prior = weakPriors, 
+                        #prior_intercept = weak_prior_intercept)
+  # prior_summary(lmm0_HMC)$prior
+  save(lmm0_HMC, file="exp1_rangeFit_v2.RData")
+}else{
+  load("exp1_rangeFit.RData")
+}
+
+# this is just an helper function to extract the values of the compression parameter (alpha)
+compAlphas_rstanarm <- function(.) {
+  tab <- fixef(.)
+  a1 <- tab["ecc_diff"] / tab["ecc"]
+  a2 <- (tab["ecc_diff"]+tab["cond1:ecc_diff"]) / (tab["ecc"]+tab["ecc:cond1"])
+  a3 <- (tab["ecc_diff"]+tab["cond2:ecc_diff"]) / (tab["ecc"]+tab["ecc:cond2"])
+  alpha <- c(a1,a2,a3)
+  cond <- c("a1","a2","a3")
+  post_samples <- as.data.frame(.)[,c("ecc_diff","ecc","cond1:ecc_diff","cond2:ecc_diff","ecc:cond1","ecc:cond2")]
+  post_samples$a1 <- post_samples$ecc_diff / post_samples$ecc
+  post_samples$a2 <- (post_samples$ecc_diff + post_samples$'cond1:ecc_diff') / (post_samples$ecc+post_samples$'ecc:cond1')
+  post_samples$a3 <- (post_samples$ecc_diff + post_samples$'cond2:ecc_diff') / (post_samples$ecc+post_samples$'ecc:cond2')
+  alpha_se <- c(sd(post_samples$a1), sd(post_samples$a2), sd(post_samples$a3))
+  CI_lb <- c(quantile(post_samples$a1, probs = 0.025,na.rm=T), quantile(post_samples$a2, probs = 0.025,na.rm=T), quantile(post_samples$a3, probs = 0.025,na.rm=T))
+  CI_ub <- c(quantile(post_samples$a1, probs = 0.975,na.rm=T), quantile(post_samples$a2, probs = 0.975,na.rm=T), quantile(post_samples$a3, probs = 0.975,na.rm=T))
+  out <- data.frame(cond, alpha, se=alpha_se, CI_lb, CI_ub)
+  return(out)
+}
+
+alpha_d_HMC <- compAlphas_rstanarm(lmm0_HMC)
+alpha_d_HMC$sigmaf <- c("0.3","0.9","1.5")
+alpha_d_HMC$sigma <- sort(unique(d$sigma))
+
+```
+
+A plot of the compression parameters:
+
+```{r plot-range-1, echo=F, fig.width=2, fig.height=2}
+ggplot(alpha_d_HMC, aes(x=sigma,y=alpha,ymin=alpha-se,ymax=alpha+se,group=1,color=sigmaf))+geom_hline(yintercept=0,lty=2,size=0.4)+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y=expression(alpha))+scale_x_continuous(limits=c(0.2,1.7),breaks=c(0.3,0.9,1.5))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)
+```
+
+A table with parameters, standard errors, and Bayesian 95% credible intervals
+```{r tab-range-1}
+print(alpha_d_HMC)
+```
+
+Estimate the correlation between decrease in gain and compressive bias
+```{r}
+# compute individual coefficients (MAP estimates)
+tab_coeff <- coef(lmm0_HMC)$id
+tab_coeff$a1 <- tab_coeff$"ecc_diff" / tab_coeff$"ecc"
+tab_coeff$a2 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond1:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond1")
+tab_coeff$a3 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond2:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond2")
+
+gain_diff <- aggregate(gain~sigmaf+id,d[d$sigmaf=="0.3",],mean)$gain - aggregate(gain~sigmaf+id,d[d$sigmaf=="1.5",],mean)$gain
+
+# sanity check
+# all(aggregate(gain~sigmaf+id,d[d$sigmaf=="0.3",],mean)$id == row.names(tab_coeff))
+cor.test(tab_coeff$a3, gain_diff)
 ```
 
