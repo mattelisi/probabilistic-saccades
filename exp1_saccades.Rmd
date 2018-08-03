@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, fig.path="Figs/",message=FALSE,warning=FALSE)
+knitr::opts_chunk$set(echo = TRUE, fig.path="./Figs/",message=FALSE,warning=FALSE)
 ```
 
 This file documents the analysis of saccadic eye movements. 
@@ -26,7 +26,7 @@ library(ggplot2) # nicer theme
 nice_theme <- theme_bw()+theme(text=element_text(family="Helvetica",size=9),panel.border=element_blank(),strip.background = element_rect(fill="white",color="white",size=0),strip.text=element_text(size=rel(0.8)),panel.grid.major.x=element_blank(),panel.grid.major.y=element_blank(),panel.grid.minor=element_blank(),axis.line.x=element_line(size=.4),axis.line.y=element_line(size=.4),axis.text.x=element_text(size=7,color="black"),axis.text.y=element_text(size=7,color="black"),axis.line=element_line(size=.4), axis.ticks=element_line(color="black"))
 
 # load data
-d <- read.table("data/exp1_saccade.txt",header=T,sep="\t")
+d <- read.table("./data/exp1_saccade.txt",header=T,sep="\t")
 
 # exclude secondary saccades and micro-saccades
 d <- d[which(d$sacType==1),] # this include only the first large saccade leaving fixation area in each trial
@@ -406,7 +406,7 @@ d$ecc_diff <- d$mean_ecc - d$ecc
 # bootMeanCI(dfit2$alpha_15)
 ```
 
-The interaction can be seen by plotting saccade amplitudes as a function of target distance and split by eccentricity range and values of $sigma$. To reduce any confounds for this analysis we corrected individual values of saccade amplitudes by the mean effect of session order (see Methods section in the article for details). 
+The interaction can be seen by plotting saccade amplitudes as a function of target distance and split by eccentricity range and values of $\sigma$. To reduce any confounds for this analysis we corrected individual values of saccade amplitudes by the mean effect of session order (see Methods section in the article for details). 
 
 ```{r plot-range-0, echo=FALSE, fig.width=4, fig.height=2.5}
 dag2 <- aggregate(sacXresp_c ~ tarX +sigmaf + session, dag, mean)
@@ -443,10 +443,10 @@ library(rstanarm)
 # The prior for ecc_diff are weakly regularizing and centered on 0
 # For example: the prior for the gain in the condition with smallest uncertainty 
 # is a Normal centered at 0.9, with a standard deviation of 1.5
-#weak_prior_intercept = normal(location=0, scale=3, autoscale=F)
+weak_prior_intercept = normal(location=0, scale=3, autoscale=F)
 #                                 2  3  4  5      6      7  8  9
-#weakPriors <- normal(location=c(0.9, 0, 1, 0, -0.05, -0.15, 0, 0),
-#                     scale =  c(1.5, 1, 1, 1,     1,     1, 2, 2), autoscale=F)
+weakPriors <- normal(location=c(0.9, 0, 1, 0, -0.05, -0.15, 0, 0),
+                     scale =  c(1.5, 1, 1, 1,     1,     1, 2, 2), autoscale=F)
 
 # I also set a weakly regularizing prior for the variance covariance matrix
 # with regularization > 1 the mode of the prior is at the identity matrix
@@ -454,20 +454,20 @@ library(rstanarm)
 # weakVarCov <- lkj(regularization = 1.5) # cause problems, leave default
 
 # fit the model (4 chains, 1000 samples each)
-if(!file.exists("exp1_rangeFit_v2.RData")){
+if(!file.exists("./data/exp1_rangeFit_v2.RData")){
   lmm0_HMC <- stan_lmer(sacXresp_c ~ ecc + cond1 + cond2 + ecc_diff 
                         + ecc:cond1 + ecc:cond2 
                         + ecc_diff:cond1 + ecc_diff:cond2 
                         + (ecc + cond1 + cond2 + ecc_diff 
                            + ecc:cond1 + ecc:cond2 
                            + ecc_diff:cond1 + ecc_diff:cond2 | id), 
-                        data = d, cores = 4, iter = 500, chain=4) 
-                        #prior = weakPriors, 
-                        #prior_intercept = weak_prior_intercept)
+                        data = d, cores = 6, iter = 500, chain=6, 
+                        prior = weakPriors, 
+                        prior_intercept = weak_prior_intercept)
   # prior_summary(lmm0_HMC)$prior
-  save(lmm0_HMC, file="exp1_rangeFit_v2.RData")
+  save(lmm0_HMC, file="./data/exp1_rangeFit_v2.RData")
 }else{
-  load("exp1_rangeFit.RData")
+  load("./data/exp1_rangeFit_v2.RData")
 }
 
 # this is just an helper function to extract the values of the compression parameter (alpha)
@@ -519,5 +519,381 @@ gain_diff <- aggregate(gain~sigmaf+id,d[d$sigmaf=="0.3",],mean)$gain - aggregate
 # sanity check
 # all(aggregate(gain~sigmaf+id,d[d$sigmaf=="0.3",],mean)$id == row.names(tab_coeff))
 cor.test(tab_coeff$a3, gain_diff)
+```
+
+
+## Cost function estimation
+
+### Ideal saccade gain under an asymmetric-quadratic loss
+
+The asymmetric loss function is defined as
+$$
+L(x)=\left[ a +(1-2a)\cdot 1_{x<0} \right] \cdot x^2
+$$
+where $a$ is the asymmetry parameter, and $x$ is the landing error measured in "gain units", i.e. in proportion of target distance (more precisely, if $E$ is the eccentricity of the target, and $S$ the saccade amplitude, then $x=\frac{S}{E}-1$). The aimpoint $\mu$ is defined as difference from a unit gain of 1, and $1_{x<0}$ is an indicator function that is equal to 1 when the argument in the subscript ($x<0$) is verified, and zero otherwise.
+
+The expected loss is calculated by integrating the cost of each motor oucome weighted by its probability, and can be calculated as
+$$
+\begin{align}
+\mathbb{E}(L \mid \mu ,\sigma)=& \int_{-\infty}^{\infty} L(x) \cdot \phi \left(\frac{x-\mu}{\sigma}\right) \, dx \\
+=&\left( 1-a\right)\left( \frac{{{\mu}^{2}}+{{\sigma}^{2}}}{2}+\frac{\frac{\sqrt{\pi}}{\sqrt{2}}\cdot \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma}\right) \cdot \left( {{\mu}^{2}}+{{\sigma}^{2}}\right) -\mu\cdot \sigma\cdot {{e}^{-\frac{{{\mu}^{2}}}{2 {{\sigma}^{2}}}}}}{\sqrt{2\pi}}\right) \\
+&+a \left( \frac{{{\mu}^{2}}+{{\sigma}^{2}}}{2}-\frac{\frac{\sqrt{\pi}}{\sqrt{2}}\cdot \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma}\right) \cdot \left( {{\mu}^{2}}+{{\sigma}^{2}}\right) -\mu\cdot \sigma \cdot {{e}^{-\frac{{{\mu}^{2}}}{2 {{\sigma}^{2}}}}}}{\sqrt{2\pi}}\right) \\
+=& \frac{\mu^2+\sigma^2}{2} + (1-2a) \frac{(\mu^2 + \sigma^2) \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma} \right)}{2} + (2a-1) \frac{\mu \sigma e^{-\frac{\mu^2}{2 \sigma^2}}}{\sqrt{2\pi}}\\
+=& \frac{\mu^2+\sigma^2}{2} + (1-2a) \left[ \frac{(\mu^2 + \sigma^2) \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma} \right)}{2} - \frac{\mu \sigma e^{-\frac{\mu^2}{2 \sigma^2}}}{\sqrt{2\pi}} \right]
+\end{align}
+$$
+where we have assumed that the variability of motor outcomes is well described by a Gaussian distribution $x \sim \mathcal{N}(\mu,\sigma^2)$ ($\phi$ indicates the Gaussian probability density function).
+It is easy to verify that when $a=0.5$ (meaning that the cost function is symmetric) the last two terms of the function cancel out. In this case the minimum of the expected cost is obtained for $\mu=0$, as it should be, and depends on the variability (it is precisely $\frac{\sigma^2}{2}$).
+
+Given a certain variability $\sigma$ of the motor outcomes, and a given cost asymmetry $a$, there is only one ideal aimpoint $\mu$ which minimizes the expected cost. It is straighforward to compute the minimum of the expected cost by gradient descent, using the derivative of the expected loss.
+
+The derivative of the expected loss can be expressed as
+$$
+\begin{align}
+\frac{\rm{d}}{\rm{d}\mu} \mathbb{E}(L \mid \mu ,\sigma)=&(2a-1) \mu \cdot \mathrm{erf}\left( \frac{\mu}{\sqrt{2} \sigma} \right) + \frac{2\sigma \cdot (2a-1) \cdot e^{-\frac{\mu^2}{2 \sigma^2}} }{\sqrt{2\pi}} + \mu \\
+=&\mu + (2a-1) \left[ \mu \cdot \mathrm{erf}\left( \frac{\mu}{\sqrt{2} \sigma} \right) + \frac{2\sigma \cdot e^{-\frac{\mu^2}{2 \sigma^2}} }{\sqrt{2\pi}} \right]
+\end{align}
+$$
+Again, if $a = 0.5$ the derivative is zero (indicating the minimum of the function) only when $\mu=0$. 
+
+### Shape of saccade landing distributions
+To fit the model on individual data, in the article we assumed that the variability of motor outcomes is Gaussian. To check that this is a reasonable assumption, we can verify that the distribution of saccade gain are symmetric, by computing their non-parametric skew. The non-parametric skew is defined as the difference between mean and median, divided by the standard deviation. Since the mean lies less than one standard deviation from the mean for any distribution, this metric is bounded between -1 and 1.
+
+
+```{r}
+skewedness <- function(x){
+	(mean(x) - median(x)) / sd(x)
+}
+dagsk <- aggregate(gain ~ sigmaf+id +tarX  , d,  skewedness) # average skew for each distribution (eccentricity & subject)
+t.test(aggregate(gain ~ id  , dagsk, mean)$gain) # test average skew per subject
+
+dagsk$tarXf <- factor(dagsk$tarX)
+summary(aov(gain ~ sigmaf + tarXf + Error(id/(sigmaf+tarXf)), dagsk)) # does skew vary with sigma or eccntricity?
+```
+
+
+### Code for estimating asymmetrical function
+
+```{r}
+### quadratic loss // closed-form for expected loss
+loss <- function(err, a){
+	(a + (1-2*a)*(err<0)) * abs(err)^2#(1.687576)
+}
+
+expected_loss <- function(aim_p, sig, a){
+	(aim_p^2+sig^2)/2 + ((1-2*a)*(aim_p^2+sig^2)*erf(-aim_p/(sqrt(2)*sig)))/2 + ((2*a-1)*aim_p*sig *exp(-(aim_p^2)/(2*sig^2)))/ sqrt(2*pi)
+}
+
+# derivative of expected loss with respect to the aim point
+ELderiv <- function(aim_p, sig, a){
+	u <- aim_p; s<-sig;
+	e_1 <- (2*a-1)*u*erf(u/(sqrt(2)*s)) +u +2*s*(2*a-1)*exp(-(u^2)/(2*s^2))/(sqrt(2*pi))
+	return(e_1)
+}
+
+# compute ideal aimpoint using gradient descent
+idealAimpoint <- function(sig, a){
+	stepSize<-1
+	convTh<-1e-5
+	maxIt<-1e8
+	converged <- F
+	it <- 0
+	g <- -0.1
+	while(converged == F & it<maxIt){
+		it <- it+1
+		g_new <- g - stepSize*ELderiv(g, sig, a)
+		if(abs(g_new - g)<=convTh){
+			converged<-T
+		}
+		g <- g_new
+	}
+	if(converged == F){
+		warning(paste(it,">",maxIt,"; max number of iterations exceeded!", sep=""))
+	}
+	return(g_new)
+}
+
+MSE_a <- function(par, d){
+	MSE <- 0
+	for(i in 1:3){
+		MSE <- MSE + sum(d$err_g[d$cond==i]-idealAimpoint(par[i], par[4]))^2
+	}
+	return(MSE/nrow(d))
+}
+
+idealAimpoint_GD <- function(sig, a){
+	exp_cost <- function(aim_p) expected_loss(aim_p, sig, a)
+	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
+}
+
+idealAimpoint_v <- function(sig, a){
+	aimp <- vector("numeric",length(sig))
+	for(i in 1:length(sig)){
+		aimp[i] <- idealAimpoint(sig[i],a)
+	}
+	return(aimp)
+}
+
+# negative log likelihood function for a single subject
+# par = c(sig1, sig2, sig3, alpha)
+negloglik_single <- function(par, d){
+	aimpoint <- vector("numeric",3)
+	L <- 0
+	for(i in 1:3){
+		# integrand <-function(x, aim_p) loss(x, par[4])*dnorm(x, mean=aim_p, sd= par[i])
+		# exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
+		# aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
+		aimpoint[i] <- idealAimpoint(par[i], par[4])
+		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
+	}
+	return(L)
+}
+
+### ------------------------------------------------------------------------------------- ###
+# log likelihood for parametric (null) models
+
+# two parameters (mean+sd) for each condition
+# par = c(sd1, sd2, sd3, intercept, slope)
+negloglik_m00 <-function(d, par){
+	L <- 0
+	for(i in 1:3){
+		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=par[4]+par[i]*par[5], sd= par[i], log=TRUE))
+
+	}
+	return(L)
+}
+
+MSE_00 <- function(par, d){
+	MSE <- 0
+	for(i in 1:3){
+		MSE <- MSE + sum(d$err_g[d$cond==i]-(par[4]+par[i]*par[5]))^2
+	}
+	return(MSE/nrow(d))
+}
+
+
+# quadratic model, add another parameter (slope2 * sigma^2)
+# par = c(sd1, sd2, sd3, intercept, slope, slope2)
+negloglik_m01 <-function(d, par){
+	L <- 0
+	for(i in 1:3){
+		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=par[4]+par[i]*par[5]+par[i]^2*par[6], sd= par[i], log=TRUE))
+
+	}
+	return(L)
+}
+
+MSE_01 <- function(par, d){
+	MSE <- 0
+	for(i in 1:3){
+		MSE <- MSE + sum(d$err_g[d$cond==i]-(par[4]+par[i]*par[5]+par[i]^2*par[6]))^2
+	}
+	return(MSE/nrow(d))
+}
+
+
+### ------------------------------------------------------------------------------------- ###
+# function for estimating also the exponent of the loss
+# par = c(exponent, asymmetry)
+loss_2 <- function(err, par){
+	(par[2] + (1-2*par[2])*(err<0)) * abs(err)^par[1]
+}
+
+idealAimpoint_2 <- function(sig, par){
+	integrand <-function(x, aim_p) loss_2(x, par)*dnorm(x, mean=aim_p, sd= sig)
+	exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
+	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
+}
+
+idealAimpoint_v_2 <- function(sig, par){
+	aimp <- vector("numeric",length(sig))
+	for(i in 1:length(sig)){
+		aimp[i] <- idealAimpoint_2(sig[i],par)
+	}
+	return(aimp)
+}
+
+# negative log likelihood function for a single subject
+# par = c(sig1, sig2, sig3, exponent, alpha)
+negloglik_single_2 <- function(par, d){
+	aimpoint <- vector("numeric",3)
+	L <- 0
+	for(i in 1:3){
+		integrand <-function(x, aim_p) loss_2(x, par[4:5])*dnorm(x, mean=aim_p, sd= par[i])
+		exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
+		aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
+		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
+	}
+	return(L)
+}
+
+MSE_2 <- function(par, d){
+	MSE <- 0
+	for(i in 1:3){
+		MSE <- MSE + sum(d$err_g[d$cond==i]-idealAimpoint_2(par[i], par[4:5]))^2
+	}
+	return(MSE/nrow(d))
+}
+
+### ------------------------------------------------------------------------------------- ###
+# alternative version with 2 free parameters in the loss function
+# par = c(exponent, asymmetry)
+loss_3 <- function(err, par){
+	(par[2] + (1-2*par[2])*(err<0)) * (par[1]*err)^2
+}
+
+idealAimpoint_3 <- function(sig, par){
+	integrand <-function(x, aim_p) loss_3(x, par)*dnorm(x, mean=aim_p, sd= sig)
+	exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
+	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
+}
+
+idealAimpoint_v_3 <- function(sig, par){
+	aimp <- vector("numeric",length(sig))
+	for(i in 1:length(sig)){
+		aimp[i] <- idealAimpoint_3(sig[i],par)
+	}
+	return(aimp)
+}
+
+# negative log likelihood function for a single subject
+# par = c(sig1, sig2, sig3, cost_factor, alpha)
+negloglik_single_3 <- function(par, d){
+	aimpoint <- vector("numeric",3)
+	L <- 0
+	for(i in 1:3){
+		integrand <-function(x, aim_p) loss_3(x, par[4:5])*dnorm(x, mean=aim_p, sd= par[i])
+		exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
+		aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
+		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
+	}
+	return(L)
+}
+
+### ------------------------------------------------------------------------------------- ###
+# alternative version with robust loss function
+
+# Robust loss function (downweight extreme errors)
+# typical values for k, which provide high efficiency also in the normal case, are then
+# k = sigma_hat * 4.685 # for Bisquare function
+# (these values are taken from John Fox notes on robust regression,
+# avalable here: http://users.stat.umn.edu/~sandy/courses/8053/handouts/robust.pdf)
+bisquare_loss <- function(err, k){
+	# this start quadratic then flattens to a constant value
+	ifelse(abs(err)<=k, ((k^2)/6) * (1 - (1-(err/k)^2)^3),  (k^2)/6)
+}
+
+loss_R <- function(err, par){
+	(par[2] + (1-2*par[2])*(err<0)) * bisquare_loss(err, k=par[1])
+}
+
+idealAimpoint_R <- function(sig, par){
+	integrand <-function(x, aim_p) loss_R(x, par)*dnorm(x, mean=aim_p, sd= sig)
+	exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
+	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
+}
+
+idealAimpoint_v_R <- function(sig, par){
+	aimp <- vector("numeric",length(sig))
+	for(i in 1:length(sig)){
+		aimp[i] <- idealAimpoint_R(sig[i],par)
+	}
+	return(aimp)
+}
+
+# negative log likelihood function for a single subject
+# par = c(sig1, sig2, sig3, k, alpha)
+negloglik_single_R <- function(par, d){
+	aimpoint <- vector("numeric",3)
+	L <- 0
+	for(i in 1:3){
+		integrand <-function(x, aim_p) loss_R(x, par[4:5])*dnorm(x, mean=aim_p, sd= par[i])
+		exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
+		aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
+		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
+	}
+	return(L)
+}
+
+MSE_R <- function(par, d){
+	MSE <- 0
+	for(i in 1:3){
+		MSE <- MSE + sum(d$err_g[d$cond==i]-idealAimpoint_R(par[i], par[4:5]))^2
+	}
+	return(MSE/nrow(d))
+}
+
+
+### ------------------------------------------------------------------------------------- ###
+# perform cross-validation of the quadratic-asymmetric model
+# and of the linear null-model above, byt holding one condition out at a time
+hcoCrossValidation <- function(d){
+
+	# split based on condition
+	nCs <- length(unique(d$cond))
+	Cs <- unique(d$cond)
+	dout <- {}
+
+	startpar <- c(0.12, 0.14, 0.18, 0.8)
+	par_LB <- c(1e-3, 1e-3, 1e-3, 0)
+	par_UB <-  c(0.5, 0.5, 0.5, 1)
+
+	# robust model
+	startparR <- c(0.12, 0.14, 0.18, 0.634483, 0.8)
+	par_LB_R <- c(1e-3, 1e-3, 1e-3, 1e-4, 0)
+	par_UB_R <-  c(0.5, 0.5, 0.5, 10, 1)
+
+	# estimate exponent of loss function
+	startpar_2 <- c(0.12, 0.14, 0.18, 2, 0.8)
+	par_LB_2 <- c(1e-3, 1e-3, 1e-3, 0.05, 0)
+	par_UB_2 <-  c(0.5, 0.5, 0.5, 5, 1)
+
+
+	# start par for null models
+	startpar00 <- c(0.12, 0.14, 0.18, 0, -0.5)
+	LB00 <- c(1e-3, 1e-3, 1e-3, -100, -100)
+	UB00 <- c(0.5, 0.5, 0.5, 100, 100)
+
+	cat(paste("condition-split cross-validation begin"))
+
+	# begin
+	t<-0
+	for(i in 1:nCs){
+		t <- t+1
+		c_test <- Cs[i]
+
+		dtest <- d[which(d$cond==c_test), ]
+		dtrain <- d[which(d$cond!=c_test), ]
+
+		# fit quadratic model
+		fit1 <- optim(par=startpar, fn=negloglik_single, d=dtrain, method="L-BFGS-B", lower=par_LB, upper=par_UB)
+		fit1 <- optim(par=fit1$par, fn=negloglik_single, d=dtrain, method="L-BFGS-B", lower=par_LB, upper=par_UB)
+		L1 <- -negloglik_single(fit1$par, dtest) # note the minus sign
+		MSE1 <- MSE_a(fit1$par, dtest)
+
+		# fit quadratic model
+		fit2 <- optim(par=startpar_2, fn=negloglik_single_2, d=dtrain, method="L-BFGS-B", lower=par_LB_2, upper=par_UB_2)
+		fit2 <- optim(par=fit2$par, fn=negloglik_single_2, d=dtrain, method="L-BFGS-B", lower=par_LB_2, upper=par_UB_2)
+		L2 <- -negloglik_single_2(fit2$par, dtest) # note the minus sign
+		MSE2 <- MSE_2(fit2$par, dtest)
+
+		# fit robust model
+		fitR <- optim(par=startparR, fn=negloglik_single_R, d=dtrain, method="L-BFGS-B", lower=par_LB_R, upper=par_UB_R)
+		L_R <- -negloglik_single_R(fitR$par, dtest) # note the minus sign
+		MSE_R <- MSE_R(fitR$par, dtest)
+
+		# null models
+		fit00 <- optim(par=startpar00, fn=negloglik_m00, d=dtrain, method="L-BFGS-B", lower=LB00, upper=UB00)
+		fit00 <- optim(par=fit00$par, fn=negloglik_m00, d=dtrain, method="L-BFGS-B", lower=LB00, upper=UB00)
+		L00 <- -negloglik_m00(dtest, fit00$par)
+		MSE00 <- MSE_00(fit00$par, dtest)
+
+		# store data
+		dout <- rbind(dout, data.frame(t, c_test, sig1=fit1$par[1], sig2=fit1$par[2], sig3=fit1$par[3], alpha=fit1$par[4], L1, L2, L00, L_R, MSE1, MSE2, MSE00, MSE_R, sig1R=fitR$par[1], sig2R=fitR$par[2], sig3R=fitR$par[3], alphaR=fitR$par[5], lhspR=fitR$par[4],sig1_2=fit2$par[1], sig2_2=fit2$par[2], sig3_2=fit2$par[3], alpha_2=fit2$par[5],expo_2=fit2$par[4]))
+
+	}
+	cat(" ... completed!\n")
+	return(dout)
+}
 ```
 
