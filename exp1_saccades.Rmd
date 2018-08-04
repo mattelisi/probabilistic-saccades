@@ -545,16 +545,7 @@ $$
 where we have assumed that the variability of motor outcomes is well described by a Gaussian distribution $x \sim \mathcal{N}(\mu,\sigma^2)$ ($\phi$ indicates the Gaussian probability density function).
 It is easy to verify that when $a=0.5$ (meaning that the cost function is symmetric) the last two terms of the function cancel out. In this case the minimum of the expected cost is obtained for $\mu=0$, as it should be, and depends on the variability (it is precisely $\frac{\sigma^2}{2}$).
 
-Given a certain variability $\sigma$ of the motor outcomes, and a given cost asymmetry $a$, there is only one ideal aimpoint $\mu$ which minimizes the expected cost. It is straighforward to compute the minimum of the expected cost by gradient descent, using the derivative of the expected loss.
-
-The derivative of the expected loss can be expressed as
-$$
-\begin{align}
-\frac{\rm{d}}{\rm{d}\mu} \mathbb{E}(L \mid \mu ,\sigma)=&(2a-1) \mu \cdot \mathrm{erf}\left( \frac{\mu}{\sqrt{2} \sigma} \right) + \frac{2\sigma \cdot (2a-1) \cdot e^{-\frac{\mu^2}{2 \sigma^2}} }{\sqrt{2\pi}} + \mu \\
-=&\mu + (2a-1) \left[ \mu \cdot \mathrm{erf}\left( \frac{\mu}{\sqrt{2} \sigma} \right) + \frac{2\sigma \cdot e^{-\frac{\mu^2}{2 \sigma^2}} }{\sqrt{2\pi}} \right]
-\end{align}
-$$
-Again, if $a = 0.5$ the derivative is zero (indicating the minimum of the function) only when $\mu=0$. 
+Given a certain variability $\sigma$ of the motor outcomes, and a given cost asymmetry $a$, there is only one ideal aimpoint $\mu$ which minimizes the expected cost. The function is convex and it is straightforward to use one dimensional numerical optimization method (e.g. Brent method) to quickly find the minimum.
 
 ### Shape of saccade landing distributions
 To fit the model on individual data, in the article we assumed that the variability of motor outcomes is Gaussian. To check that this is a reasonable assumption, we can verify that the distribution of saccade gain are symmetric, by computing their non-parametric skew. The non-parametric skew is defined as the difference between mean and median, divided by the standard deviation. Since the mean lies less than one standard deviation from the mean for any distribution, this metric is bounded between -1 and 1.
@@ -574,7 +565,7 @@ summary(aov(gain ~ sigmaf + tarXf + Error(id/(sigmaf+tarXf)), dagsk)) # does ske
 
 ### Code for estimating asymmetrical function
 
-```{r}
+```{r asymfunctions, echo=FALSE}
 ### quadratic loss // closed-form for expected loss
 loss <- function(err, a){
 	(a + (1-2*a)*(err<0)) * abs(err)^2#(1.687576)
@@ -591,26 +582,31 @@ ELderiv <- function(aim_p, sig, a){
 	return(e_1)
 }
 
-# compute ideal aimpoint using gradient descent
+# compute ideal aimpoint using gradient descent # unnecessary
+# idealAimpoint <- function(sig, a){
+# 	stepSize<-1
+# 	convTh<-1e-5
+# 	maxIt<-1e8
+# 	converged <- F
+# 	it <- 0
+# 	g <- -0.1
+# 	while(converged == F & it<maxIt){
+# 		it <- it+1
+# 		g_new <- g - stepSize*ELderiv(g, sig, a)
+# 		if(abs(g_new - g)<=convTh){
+# 			converged<-T
+# 		}
+# 		g <- g_new
+# 	}
+# 	if(converged == F){
+# 		warning(paste(it,">",maxIt,"; max number of iterations exceeded!", sep=""))
+# 	}
+# 	return(g_new)
+# }
+
 idealAimpoint <- function(sig, a){
-	stepSize<-1
-	convTh<-1e-5
-	maxIt<-1e8
-	converged <- F
-	it <- 0
-	g <- -0.1
-	while(converged == F & it<maxIt){
-		it <- it+1
-		g_new <- g - stepSize*ELderiv(g, sig, a)
-		if(abs(g_new - g)<=convTh){
-			converged<-T
-		}
-		g <- g_new
-	}
-	if(converged == F){
-		warning(paste(it,">",maxIt,"; max number of iterations exceeded!", sep=""))
-	}
-	return(g_new)
+  exp_cost <- function(aim_p) expected_loss(aim_p, sig, a)
+	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
 }
 
 MSE_a <- function(par, d){
@@ -621,10 +617,6 @@ MSE_a <- function(par, d){
 	return(MSE/nrow(d))
 }
 
-idealAimpoint_GD <- function(sig, a){
-	exp_cost <- function(aim_p) expected_loss(aim_p, sig, a)
-	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
-}
 
 idealAimpoint_v <- function(sig, a){
 	aimp <- vector("numeric",length(sig))
@@ -671,104 +663,6 @@ MSE_00 <- function(par, d){
 	return(MSE/nrow(d))
 }
 
-
-# quadratic model, add another parameter (slope2 * sigma^2)
-# par = c(sd1, sd2, sd3, intercept, slope, slope2)
-negloglik_m01 <-function(d, par){
-	L <- 0
-	for(i in 1:3){
-		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=par[4]+par[i]*par[5]+par[i]^2*par[6], sd= par[i], log=TRUE))
-
-	}
-	return(L)
-}
-
-MSE_01 <- function(par, d){
-	MSE <- 0
-	for(i in 1:3){
-		MSE <- MSE + sum(d$err_g[d$cond==i]-(par[4]+par[i]*par[5]+par[i]^2*par[6]))^2
-	}
-	return(MSE/nrow(d))
-}
-
-
-### ------------------------------------------------------------------------------------- ###
-# function for estimating also the exponent of the loss
-# par = c(exponent, asymmetry)
-loss_2 <- function(err, par){
-	(par[2] + (1-2*par[2])*(err<0)) * abs(err)^par[1]
-}
-
-idealAimpoint_2 <- function(sig, par){
-	integrand <-function(x, aim_p) loss_2(x, par)*dnorm(x, mean=aim_p, sd= sig)
-	exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
-	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
-}
-
-idealAimpoint_v_2 <- function(sig, par){
-	aimp <- vector("numeric",length(sig))
-	for(i in 1:length(sig)){
-		aimp[i] <- idealAimpoint_2(sig[i],par)
-	}
-	return(aimp)
-}
-
-# negative log likelihood function for a single subject
-# par = c(sig1, sig2, sig3, exponent, alpha)
-negloglik_single_2 <- function(par, d){
-	aimpoint <- vector("numeric",3)
-	L <- 0
-	for(i in 1:3){
-		integrand <-function(x, aim_p) loss_2(x, par[4:5])*dnorm(x, mean=aim_p, sd= par[i])
-		exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
-		aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
-		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
-	}
-	return(L)
-}
-
-MSE_2 <- function(par, d){
-	MSE <- 0
-	for(i in 1:3){
-		MSE <- MSE + sum(d$err_g[d$cond==i]-idealAimpoint_2(par[i], par[4:5]))^2
-	}
-	return(MSE/nrow(d))
-}
-
-### ------------------------------------------------------------------------------------- ###
-# alternative version with 2 free parameters in the loss function
-# par = c(exponent, asymmetry)
-loss_3 <- function(err, par){
-	(par[2] + (1-2*par[2])*(err<0)) * (par[1]*err)^2
-}
-
-idealAimpoint_3 <- function(sig, par){
-	integrand <-function(x, aim_p) loss_3(x, par)*dnorm(x, mean=aim_p, sd= sig)
-	exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
-	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
-}
-
-idealAimpoint_v_3 <- function(sig, par){
-	aimp <- vector("numeric",length(sig))
-	for(i in 1:length(sig)){
-		aimp[i] <- idealAimpoint_3(sig[i],par)
-	}
-	return(aimp)
-}
-
-# negative log likelihood function for a single subject
-# par = c(sig1, sig2, sig3, cost_factor, alpha)
-negloglik_single_3 <- function(par, d){
-	aimpoint <- vector("numeric",3)
-	L <- 0
-	for(i in 1:3){
-		integrand <-function(x, aim_p) loss_3(x, par[4:5])*dnorm(x, mean=aim_p, sd= par[i])
-		exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
-		aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
-		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
-	}
-	return(L)
-}
 
 ### ------------------------------------------------------------------------------------- ###
 # alternative version with robust loss function
@@ -871,12 +765,6 @@ hcoCrossValidation <- function(d){
 		L1 <- -negloglik_single(fit1$par, dtest) # note the minus sign
 		MSE1 <- MSE_a(fit1$par, dtest)
 
-		# fit quadratic model
-		fit2 <- optim(par=startpar_2, fn=negloglik_single_2, d=dtrain, method="L-BFGS-B", lower=par_LB_2, upper=par_UB_2)
-		fit2 <- optim(par=fit2$par, fn=negloglik_single_2, d=dtrain, method="L-BFGS-B", lower=par_LB_2, upper=par_UB_2)
-		L2 <- -negloglik_single_2(fit2$par, dtest) # note the minus sign
-		MSE2 <- MSE_2(fit2$par, dtest)
-
 		# fit robust model
 		fitR <- optim(par=startparR, fn=negloglik_single_R, d=dtrain, method="L-BFGS-B", lower=par_LB_R, upper=par_UB_R)
 		L_R <- -negloglik_single_R(fitR$par, dtest) # note the minus sign
@@ -889,11 +777,105 @@ hcoCrossValidation <- function(d){
 		MSE00 <- MSE_00(fit00$par, dtest)
 
 		# store data
-		dout <- rbind(dout, data.frame(t, c_test, sig1=fit1$par[1], sig2=fit1$par[2], sig3=fit1$par[3], alpha=fit1$par[4], L1, L2, L00, L_R, MSE1, MSE2, MSE00, MSE_R, sig1R=fitR$par[1], sig2R=fitR$par[2], sig3R=fitR$par[3], alphaR=fitR$par[5], lhspR=fitR$par[4],sig1_2=fit2$par[1], sig2_2=fit2$par[2], sig3_2=fit2$par[3], alpha_2=fit2$par[5],expo_2=fit2$par[4]))
+		dout <- rbind(dout, data.frame(t, c_test, sig1=fit1$par[1], sig2=fit1$par[2], sig3=fit1$par[3], alpha=fit1$par[4], L1, L00, L_R, MSE1, MSE00, MSE_R, sig1R=fitR$par[1], sig2R=fitR$par[2], sig3R=fitR$par[3], alphaR=fitR$par[5], lhspR=fitR$par[4]))
 
 	}
 	cat(" ... completed!\n")
 	return(dout)
 }
 ```
+
+After having loaded in memory the function for fitting the aymmetric cost models (see .Rmd file), we can estimate the parameter by maximum likelihood.
+
+```{r}
+# prepare data for fitting
+d$cond <- ifelse(d$sigmaf=="0.3",1,ifelse(d$sigmaf=="0.9",2,3))
+d$err_g <- d$gain - 1 # saccade error in gain units
+
+# run fit on all subjects
+startpar <- c(0.12, 0.14, 0.18, 0.7) # initial guesses
+startparR <- c(0.12, 0.14, 0.18, 0.634483, 0.8) # robust model
+par_LB_R <- c(1e-3, 1e-3, 1e-3, 1e-4, 0)
+par_UB_R <-  c(0.5, 0.5, 0.5, 10, 1)
+sig_values <- sort(unique(d$sigma))
+dfit <- {}
+dfit_2 <- {}
+dtestfit <- {}
+for(i in unique(d$id)){
+	
+	# fit assuming quadratic exponent
+	fit0 <- optim(par=startpar, fn=negloglik_single, d=d[d$id==i,], hessian=T, method="L-BFGS-B", lower=c(1e-3, 1e-3, 1e-3, 0), upper=c(0.5, 0.5, 0.5, 1))
+	par <- fit0$par
+	par_se <- sqrt(diag(MASS::ginv(fit0$hessian)))
+	
+	ideal_gain <- 1 + c(idealAimpoint(fit0$par[1], fit0$par[4]), 
+					idealAimpoint(fit0$par[2], fit0$par[4]), 
+					idealAimpoint(fit0$par[3], fit0$par[4]))
+	
+	# observed value of gain and standard deviations
+	observed_gain <- tapply(d$gain[d$id==i],d$sigmaf[d$id==i], mean)
+	observed_gain_se <- tapply(d$gain[d$id==i],d$sigmaf[d$id==i], bootMeanSE)	
+	observed_sd <- tapply(d$gain[d$id==i],d$sigmaf[d$id==i], sd)				
+	
+	# fit robust model
+	fitR <- optim(par=startparR, fn=negloglik_single_R, d=d[d$id==i,], hessian=T, method="L-BFGS-B", lower=par_LB_R, upper=par_UB_R)
+	par_R <- fitR$par
+	par_se_R <- sqrt(diag(MASS::ginv(fitR$hessian)))
+	ideal_gain_R <- 1 + c(idealAimpoint_v_R(fitR$par[1], fitR$par[4:5]), 
+					idealAimpoint_v_R(fitR$par[2], fitR$par[4:5]), 
+					idealAimpoint_v_R(fitR$par[3], fitR$par[4:5]))
+	
+	# store results
+	dfit <- rbind(dfit, data.frame(sigma=sig_values, STD=par[1:3], STD_se=par_se[1:3], 
+			alpha=par[4], alpha_se=par_se[4], id=i, ideal_gain, ideal_gain_R, observed_gain, observed_gain_se, observed_sd,
+			STD_R=par_R[1:3], STD_se=par_se_R[1:3], Lshp=par_R[4],  Lshp_se=par_se_R[4], alpha_R=par_R[5], alpha_se_R=par_se_R[5]))
+	
+	# store likelihood values
+	n_i <- nrow(d[d$id==i,])
+	L_a <- -fit0$value # store likelihood
+	L_R <- -fitR$value # minus sign
+	
+	# compute information theoretic criteria
+	# these are an approximation of the predictive quality of the model
+	# so for the model comparison we will use the cross-validation instead
+	AIC_a   <- 2*4 - 2*L_a
+	AIC_R   <- 2*5 - 2*L_R
+	
+	msea <- MSE_a(fit0$par, d[d$id==i,])
+	mser <- MSE_R(fitR$par, d[d$id==i,])
+	
+	AICc_a   <- AIC_a + (2*4^2 + 2*4)/(n_i - 4 - 1)
+	AICc_R   <- AIC_R + (2*5^2 + 2*5)/(n_i - 5 - 1)
+	
+	BIC_a   <- log(n_i)*4 - 2*L_a
+	BIC_R   <- log(n_i)*5 - 2*L_R
+	
+	dtestfit <- rbind(dtestfit, data.frame(id=i, L_a, msea, mser, L_R, L_R, AIC_a, AIC_R, AICc_a, AICc_R, BIC_a, BIC_R))
+	
+	
+}
+```
+
+Compute summary statistics from the results of model fitting
+
+```{r}
+# average estimate of cost asymmetry
+a <- mean(tapply(dfit$alpha, dfit$id, mean))
+aCI <- bootMeanCI(tapply(dfit$alpha, dfit$id, mean))
+round(a,digits=2)
+round(aCI,digits=2)
+
+# transform into cost ratio (for a constant error magnitude)
+round(a/(1-a),digits=1) 
+round(aCI/(1-aCI),digits=1)
+
+# robust loss functions
+round(mean(tapply(dfit$Lshp, dfit$id, mean)),digits=2)
+round(bootMeanCI(tapply(dfit$Lshp, dfit$id, mean)),digits=2)
+
+# averaged mse error
+round(mean(dtestfit$msea),digits=8)
+round(mean(dtestfit$mser),digits=8)
+```
+
 
