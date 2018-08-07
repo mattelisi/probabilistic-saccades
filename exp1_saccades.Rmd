@@ -878,4 +878,82 @@ round(mean(dtestfit$msea),digits=8)
 round(mean(dtestfit$mser),digits=8)
 ```
 
+### Cross-validation
+
+This code run the cross-validation test: each model is iteratively fitted on two of the conditions, then its predictive ability is evaluated on the hold out condition.
+
+```{r}
+if(!file.exists("./data/CVres_v2_exp1.txt")){
+  # begin cross-validation
+  dcv <- {}
+  for(i in unique(d$id)){
+    d_i <- hcoCrossValidation(d[d$id==i,])
+    d_i$id <- i
+    dcv <- rbind(dcv, d_i)
+  }
+  write.table(dcv, "./data/CVres_v2_exp1.txt", quote=F, sep="\t",row.names=F)
+}else{
+  dcv <- read.table("./data/CVres_v2_exp1.txt", header=T, sep="\t")
+}
+
+dcv$L1diff <- dcv$L1 - dcv$L00
+dagW <- aggregate(L1diff~id, dcv, sum)
+sum(dagW$L1diff>0) # for how many subjects the quadratic model is better than the null (out of 12)
+mean(dagW$L1diff) # mean log likelihood difference
+range(dagW$L1diff) # range of log likelihood differences
+```
+
+Some plots of the cross-validated log-likelihood and error, first relative to the null model, then relative to the model with robust loss functions.
+
+```{r plot-cv-1, echo=F, fig.width=4, fig.height=2}
+# histogram log-lok difference
+dcv$L1diff <- dcv$L1 - dcv$L00
+dcv$LRdiff <- dcv$L_R - dcv$L00
+dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, sum)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic","robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated likelihood\nrelative to descriptive model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))+scale_x_continuous(limits=c(0,18000))
+```
+
+```{r plot-cv-2, echo=F, fig.width=4, fig.height=2}
+# histogram MSE differences
+dcv$L1diff <- dcv$MSE1 - dcv$MSE00
+dcv$LRdiff <- dcv$MSE_R - dcv$MSE00
+dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, mean)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic", "robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated error\nrelative to descriptive model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))+scale_x_continuous(limits=c(-300,0))
+```
+
+```{r plot-cv-3, echo=F, fig.width=4, fig.height=2}
+# histogram log-lok difference - wrt robust
+dcv$L1diff <- dcv$L1 - dcv$L_R
+dcv$LRdiff <- dcv$L_R - dcv$L_R
+dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, sum)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic", "robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated likelihood\nrelative to robust-loss model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))
+```
+
+```{r plot-cv-4, echo=F, fig.width=4, fig.height=2}
+# histogram MSE differences - wrt robust
+dcv$L1diff <- dcv$MSE1 - dcv$MSE_R
+dcv$LRdiff <- dcv$MSE_R - dcv$MSE_R
+dagW <- aggregate(cbind(L1diff,LRdiff)~id, dcv, mean)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic","robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated MSE\nrelative to descriptive model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))
+```
+
+
+
+
 
