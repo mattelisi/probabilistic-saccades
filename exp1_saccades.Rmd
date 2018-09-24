@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, fig.path="./Figs/",message=FALSE,warning=FALSE)
 ```
 
-This file documents the analysis of saccadic eye movements. 
+This file documents the analysis of saccadic eye movements of Experiment 1. The analysis of saccadic eye movements for the other experiments proceeded through the same steps reported here. 
 The preprocessing steps are reported exactly in the article, here I report the statistical analyses starting from a dataset containing saccades informations (onsets, offesets, latency, etc.). It requires some packages (all available on CRAN): lme4, optimx, numDeriv, ggplot2, plus some functions available [here](https://github.com/mattelisi/mlisi).
 The Matlab code for running the experiment that generated the data, as well as the analysis of raw gaze recordings is available [here](https://github.com/mattelisi/gaussianblobnoise-saccade).
 
@@ -42,13 +42,13 @@ d$gain <- d$sacXresp/abs(d$ecc * d$side - d$sacxOnset)
 d$sigmaf <- factor(round(d$sigma,digits=1))
 
 # remove "DC component" as in van Opstal & van Gisbergen, 1989, Vision Research, "Scatter in the metrics of saccades and properties of the collicular map"
-for(i in 1:nrow(d)){
-	d$sacxOffset[i] <- d$sacxOffset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-	d$sacxOnset[i] <- d$sacxOnset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-	
-	d$sacyOffset[i] <- d$sacyOffset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-	d$sacyOnset[i] <- d$sacyOnset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-}
+# for(i in 1:nrow(d)){
+# 	d$sacxOffset[i] <- d$sacxOffset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+# 	d$sacxOnset[i] <- d$sacxOnset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+# 	
+# 	d$sacyOffset[i] <- d$sacyOffset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+# 	d$sacyOnset[i] <- d$sacyOnset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+# }
 
 # signed saccade error
 d$tarX_s <- (d$ecc * d$side)
@@ -117,11 +117,13 @@ ggplot(d, aes(x=sacXresp,group=sigmaf,color=sigmaf))+geom_vline(aes(xintercept=t
 
 Average saccade amplitudes
 
-```{r ampli, echo=FALSE, fig.width=3.5, fig.height=2.8}
+```{r ampli, echo=FALSE, fig.width=2.8, fig.height=2.1}
 dag <- aggregate(sacXresp ~ sigmaf+id +tarX  , d,  mean)
 dag2 <- aggregate(sacXresp ~ sigmaf +tarX  , dag ,  mean)
 dag2$sacXresp_se <- aggregate(sacXresp ~ sigmaf+tarX, dag,  bootMeanSE)$sacXresp
+#pdf(file="ampli_exp1.pdf",height=2.1,width=2.8)
 ggplot(dag2, aes(x=tarX,y=sacXresp,ymin=sacXresp-sacXresp_se,ymax=sacXresp+sacXresp_se,color=sigmaf,group=sigmaf))+geom_abline(intercept=0,slope=1,lty=2,size=0.2)+geom_errorbar(width=0,alpha=1)+geom_line()+geom_point(size=1.5)+nice_theme+labs(x="target distance [deg]", y="saccade amplitude [deg]")+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma[blob], " [deg]")))+scale_x_continuous(limits=c(7.5,12.5))+scale_y_continuous(limits=c(6.8,11.5))
+#dev.off()
 ```
 
 Variability of saccade amplitude gain
@@ -130,7 +132,9 @@ Variability of saccade amplitude gain
 dag <- aggregate(gain ~ sigmaf+sigma+id , d,  sd)
 dag2 <- aggregate(gain ~ sigmaf+sigma , dag ,  mean)
 dag2$gain_se <- aggregate(gain ~ sigmaf+sigma, dag,  bootMeanSE)$gain
-ggplot(dag2, aes(x=sigma,y=gain,ymin=gain-gain_se,ymax=gain+gain_se,color=sigmaf,group=1))+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y="saccade variability [gain SD]")+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+scale_x_continuous(limits=c(0.2,1.61),breaks=c(0.3,0.9,1.5))
+#pdf(file="gain_SD.pdf",height=1.6,width=1.4)
+ggplot(dag2, aes(x=sigma,y=gain,ymin=gain-gain_se,ymax=gain+gain_se,color=sigmaf,group=1))+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y="variability [gain SD]")+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+scale_x_continuous(limits=c(0.2,1.61),breaks=c(0.3,0.9,1.5))+scale_y_continuous(limits=c(0.1, 0.18))
+#dev.off()
 ```
 
 
@@ -150,13 +154,14 @@ for(s_i in unique(d$sigmaf)){
 }
 ```
 
-```{r latency-gain, echo=FALSE, fig.width=3, fig.height=2}
+```{r latency-gain, echo=FALSE, fig.width=2.8, fig.height=2.1}
 dag <- aggregate(cbind(gain,RTbin_mean) ~ sigmaf+id+ RTbin , d,  mean)
 dag2 <- aggregate(cbind(gain, RTbin_mean) ~ sigmaf + RTbin , dag ,  mean)
 dag2$se <- aggregate(gain ~ sigmaf + RTbin, dag,  bootMeanSE)$gain
 dag2$rt_se <- aggregate(RTbin_mean ~ sigmaf + RTbin, dag,  bootMeanSE)$RTbin_mean
-ggplot(dag2, aes(x=RTbin_mean,y=gain,ymin=gain-se,ymax=gain+se,color=sigmaf,group=sigmaf))+geom_hline(aes(yintercept=1),lty=2,size=0.4)+geom_errorbar(width=0,alpha=1)+geom_line()+geom_point(size=1.5)+nice_theme+labs(x="saccade latency [ms]", y="saccade gain")+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma[blob], " [deg]")))+scale_y_continuous(breaks=seq(0,1,0.05))+scale_x_continuous(breaks=seq(100,600,50))
-
+#pdf(file="ampli-RT_exp1.pdf",height=2.1,width=2.8)
+ggplot(dag2, aes(x=RTbin_mean,y=gain,ymin=gain-se,ymax=gain+se,color=sigmaf,group=sigmaf))+geom_hline(aes(yintercept=1),lty=2,size=0.4)+geom_errorbar(width=0,alpha=1)+geom_line()+geom_point(size=1.5)+nice_theme+labs(x="saccade latency [ms]", y="saccade gain")+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma[blob], " [deg]")))+scale_y_continuous(breaks=seq(0,1,0.05),limits=c(0.75,1))+scale_x_continuous(breaks=seq(100,600,50))
+#dev.off()
 ```
 
 
@@ -228,26 +233,13 @@ summary(aov(sacXresp ~ sigma*session + Error(id/(sigmaf*session)), dag[dag$tarX=
 The ANOVA indicates an interaction between $sigma$ (three levels, 0.3, 0.9 and 1.5 deg) and the session (large vs. small eccentricity range). 
 
 ```{r range-prepare, echo=FALSE, results=FALSE}
-# tapply(d$session_number, list(d$tarX, d$session, d$id),mean) # sanity check
 # This implements the correction to adjust for baseline differences (see Material and Methods, main text)
 
 d$sacXresp_c <- d$sacXresp
 
-#barG <- mean(aggregate(gain ~ id, d[d$sigmaf=="0.3",], mean)$gain)
-#Gs1 <- mean(aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==1,], mean)$gain)
-#Gs2 <- mean(aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==2,], mean)$gain)
-
 barG <- aggregate(gain ~ id, d[d$sigmaf=="0.3",], mean)
 Gs1 <- aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==1,], mean)
 Gs2 <- aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==2,], mean)
-
-# for(i in 1:nrow(d)){
-#     if(d$session_number[i]==1){
-# 		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG-Gs1)
-# 	}else{
-# 		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG-Gs2)
-# 	}
-# }
 
 for(i in 1:nrow(d)){
     if(d$session_number[i]==1){
@@ -266,144 +258,6 @@ d$cond1 <- dummy(d$sigmaf)[,"0.9"]
 d$cond2 <- dummy(d$sigmaf)[,"1.5"]
 d$ecc_diff <- d$mean_ecc - d$ecc
 
-#--------------------------------------------------------------------------------------------#
-### OLD CODE FOR FITTING THE MODEL WITH LMER (all conditions together) ###
-# the problem with this are convergence warnings, one is forced to exclude higher-order
-# interactions from the random effects
-# compAlphas <- function(.) {
-# tab <- summary(.)$coefficients
-# a1 <- tab["ecc_diff",1] / tab["ecc",1]
-# a2 <- (tab["ecc_diff",1]+tab["cond1:ecc_diff",1]) / (tab["ecc",1]+tab["ecc:cond1",1])
-# a3 <- (tab["ecc_diff",1]+tab["cond2:ecc_diff",1]) / (tab["ecc",1]+tab["ecc:cond2",1])
-# alphas <- c(a1,a2,a3)
-# names(alphas) <- c("a1","a2","a3")
-# return(alphas)
-# }
-# lmm0 <- lmer(sacXresp_c ~ ecc + cond1 + cond2 + ecc_diff + ecc:cond1 + ecc:cond2 + ecc_diff:cond1 + ecc_diff:cond2 + (ecc + cond1 + cond2 + ecc_diff + ecc:cond1 + ecc:cond2 + ecc_diff:cond1 + ecc_diff:cond2 || id), d)
-# # + ecc_diff:cond1 + ecc_diff:cond2
-# # , control=lmerControl(optCtrl =list(maxfun=1e30))
-# compAlphas(lmm0)
-
-#--------------------------------------------------------------------------------------------#
-### OLD CODE FOR FITTING THE MODEL WITH LMER (split conditions) ###
-# comp1Alpha <- function(.) {
-#   tab <- summary(.)$coefficients
-#   a1 <- tab["ecc_diff",1] / tab["ecc",1]
-#   return(a1)
-# }
-# Workaround to the convergence warnings, however can't take correlation across 
-# conditions into account
-# mm_a1 <- lmer(sacXresp_c ~ ecc + ecc_diff + (ecc + ecc_diff | id), d[d$sigmaf=="0.3",])
-# comp1Alpha(mm_a1)
-# boot_a1 <- bootMer(mm_a1, comp1Alpha, 1000,.progress="txt")
-# mm_a2 <- lmer(sacXresp_c ~ ecc + ecc_diff + (ecc + ecc_diff | id), d[d$sigmaf=="0.9",])
-# comp1Alpha(mm_a2)
-# boot_a2 <- bootMer(mm_a2, comp1Alpha, 1000,.progress="txt")
-# mm_a3 <- lmer(sacXresp_c ~ ecc + ecc_diff + (ecc + ecc_diff | id), d[d$sigmaf=="1.5",])
-# comp1Alpha(mm_a3)
-# boot_a3 <- bootMer(mm_a3, comp1Alpha, 500,.progress="txt")
-# alpha_d <- data.frame(alpha=c(comp1Alpha(mm_a1),comp1Alpha(mm_a2),comp1Alpha(mm_a3)),
-	# sigma=sort(unique(d$sigma)),
-	# se = c(sd(boot_a1$t), sd(boot_a2$t), sd(boot_a3$t)),
-	# lb = c(quantile(boot_a1$t,prob=0.05/2), quantile(boot_a2$t,prob=0.05/2), quantile(boot_a3$t,prob=0.05/2)),
-	# ub = c(quantile(boot_a1$t,prob=1-0.05/2), quantile(boot_a2$t,prob=1-0.05/2), quantile(boot_a3$t,prob=1-0.05/2)))
-# save(mm_a1, mm_a2, mm_a3, boot_a1, boot_a2, boot_a3, alpha_d, file="range_exp1.RData")
-#load("range_exp1.RData")
-#print(round(alpha_d, digits=2))
-
-#--------------------------------------------------------------------------------------------#
-### FIT INDIVIDUAL SUBJECTS SEPARATELY ###
-# library(lme4)
-# mList <- lmList(sacXresp_c ~ ecc + cond1 + cond2 + ecc_diff 
-#                         + ecc:cond1 + ecc:cond2 
-#                         + ecc_diff:cond1 + ecc_diff:cond2 | id, d[d$id!="mm",])
-# tab_coeff <- coef(mList)
-# tab_coeff$a1 <- tab_coeff$"ecc_diff" / tab_coeff$"ecc"
-# tab_coeff$a2 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond1:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond1")
-# tab_coeff$a3 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond2:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond2")
-# 
-# mean(tab_coeff$a1)
-# mean(tab_coeff$a2)
-# mean(tab_coeff$a3)
-# bootMeanCI(tab_coeff$a3)
-
-#--------------------------------------------------------------------------------------------#
-### SUBJECT BY SUBJECT FIT with alpha in (0,1) ###
-# range effect analysis
-# maximum likelihood function for fitting regression models at individual level
-# 
-
-# this compute the predictions for a single conditions
-# d$ecc0: the target distance at current trial
-# d$mean_ecc: the distance at previous trial or the average distance in the session
-# parameter vector p:
-# p[1]: intercept
-# p[2]: slope
-# p[3]: mixing parameter (alpha)
-# pred_single <- function(p, d){
-# 	A <- p[1] + p[2] * (p[3]*d$tarX + (1-p[3])*d$mean_ecc)
-# 	return(A)
-# }
-
-# this compute predictions for multiple comditions:
-# - a baseline condition (sigma=0.3)
-# - d$cond1: dummy variable that code for sigma=0.9
-# - d$cond2: dummy variable that code for sigma=1.5
-# parameter vector p:
-# p[1]: intercept (sigma=0.3)
-# p[2]: itercept_sig09 - intercept
-# p[3]: itercept_sig15 - intercept
-# p[4]: slope (sigma=0.3)
-# p[5]: slope_sig09 - slope
-# p[6]: slope_sig15 - slope
-# p[7]: alpha (sigma=0.3)
-# p[8]: alpha_sig09 		##- alpha
-# p[9]: alpha_sig15 		##- alpha
-# pred_multi <- function(p, d){
-# 	beta_0 <- p[1] + p[2]*d$cond1 + p[3]*d$cond2
-# 	beta_1 <- p[4] + p[5]*d$cond1 + p[6]*d$cond2
-# 	alpha <- ifelse(d$cond1, p[8], ifelse(d$cond2, p[9], p[7]))
-# 	A <- beta_0 + beta_1 * (alpha*d$mean_ecc + (1-alpha)*d$tarX)
-# 	return(A)
-# }
-
-# loss function for optimization
-# squared_loss_multi <- function(p, d){
-# 	return(sum((d$sacXresp_c - pred_multi(p,d))^2))
-# }
-
-# wrapper for model fitting
-# fit_single <- function(d){
-# 	start_p <- c(0,0,0,1,0,0,1,0,0)
-# 	lb <- c(-50,-50,-50,-5,-5,-5,0,0,0)
-# 	ub <- c(50,50,50,5,5,5,1,1,1)
-# 	m <- optim(par = start_p, squared_loss_multi, d=d, hessian=T, control=list(maxit=1e5), method="L-BFGS-B", lower=lb, upper=ub)
-# 	# unconstrained
-# 	#m <- optim(par = start_p, squared_loss_multi, d=d, hessian=T, control=list(maxit=1e8))
-# 	par_names <- c("intercept","sig09","sig15","ecc0","ecc0_sig09","ecc0_sig15", "alpha_03", "alpha_09", "alpha_15")
-# 	se_names <- paste(par_names,"_se",sep="")
-# 	r_squared <- 1 - squared_loss_multi(m$par, d)/sum((d$sacXresp-mean(d$sacXresp))^2)
-# 	r_squared_simple <- summary(lm(sacXresp_c ~ tarX + cond1 + cond2 + tarX:cond1 + tarX:cond2, d))$r.squared
-# 	data.frame(matrix(data=c(m$par, sqrt(diag(solve(m$hessian))), r_squared, r_squared_simple), nrow=1, ncol=20, dimnames=list(NULL,c(par_names, se_names, "r.squared", "r.squared.simple"))))
-# }
-
-# do optimization subject by subject
-# dfit2 <- {}
-# for(i in unique(d$id)){
-# 	dfit2 <- rbind(dfit2, fit_single(d[d$id==i,]))
-# }
-# 
-# mean(dfit2$alpha_03)
-# bootMeanSE(dfit2$alpha_03)
-# bootMeanCI(dfit2$alpha_03)
-# 
-# mean(dfit2$alpha_09)
-# bootMeanSE(dfit2$alpha_09)
-# bootMeanCI(dfit2$alpha_09)
-# 
-# mean(dfit2$alpha_15)
-# bootMeanSE(dfit2$alpha_15)
-# bootMeanCI(dfit2$alpha_15)
 ```
 
 The interaction can be seen by plotting saccade amplitudes as a function of target distance and split by eccentricity range and values of $\sigma$. To reduce any confounds for this analysis we corrected individual values of saccade amplitudes by the mean effect of session order (see Methods section in the article for details). 
@@ -411,7 +265,10 @@ The interaction can be seen by plotting saccade amplitudes as a function of targ
 ```{r plot-range-0, echo=FALSE, fig.width=4, fig.height=2.5}
 dag2 <- aggregate(sacXresp_c ~ tarX +sigmaf + session, dag, mean)
 dag2$se <- aggregate(sacXresp_c ~ tarX +sigmaf + session, dag, bootMeanSE)$sacXresp_c
-ggplot(dag2, aes(x=tarX,y=sacXresp_c,ymin=sacXresp_c-se,ymax=sacXresp_c+se,color=factor(session),group=session))+geom_abline(intercept=0,slope=1,lty=2,col="black",size=0.4)+geom_line()+geom_errorbar(width=0,alpha=1)+geom_point(pch=19)+nice_theme+scale_color_manual(values=c("black","dark grey"),name="eccentricity\nrange")+labs(x="target distance [deg]", y="saccade amplitude [deg]")+facet_grid(.~sigmaf)+scale_y_continuous(breaks=3:12,limits=c(6.8,11.5))
+
+#pdf("range_exp1_gain_v2.pdf",width=4.5,height=2)
+ggplot(dag2, aes(x=tarX,y=sacXresp_c,ymin=sacXresp_c-se,ymax=sacXresp_c+se,color=factor(session),group=session))+geom_abline(intercept=0,slope=1,lty=2,col="black",size=0.4)+geom_line()+geom_errorbar(width=0,alpha=1)+geom_point(pch=19,size=0.8)+nice_theme+scale_color_manual(values=c("black","dark grey"),name="eccentricity\nrange")+labs(x="target distance [deg]", y="saccade amplitude [deg]")+facet_grid(.~sigmaf)+scale_y_continuous(breaks=3:12,limits=c(6.8,11.5))#+scale_x_continuous(limits=c(6,13))
+#dev.off()
 ```
 
 
@@ -447,11 +304,6 @@ weak_prior_intercept = normal(location=0, scale=3, autoscale=F)
 #                                 2  3  4  5      6      7  8  9
 weakPriors <- normal(location=c(0.9, 0, 1, 0, -0.05, -0.15, 0, 0),
                      scale =  c(1.5, 1, 1, 1,     1,     1, 2, 2), autoscale=F)
-
-# I also set a weakly regularizing prior for the variance covariance matrix
-# with regularization > 1 the mode of the prior is at the identity matrix
-# e.g. see here: https://www.psychstatistics.com/2014/12/27/d-lkj-priors/
-# weakVarCov <- lkj(regularization = 1.5) # cause problems, leave default
 
 # fit the model (4 chains, 1000 samples each)
 if(!file.exists("./data/exp1_rangeFit_v2.RData")){
@@ -498,502 +350,16 @@ alpha_d_HMC$sigma <- sort(unique(d$sigma))
 A plot of the compression parameters:
 
 ```{r plot-range-1, echo=F, fig.width=2, fig.height=2}
-ggplot(alpha_d_HMC, aes(x=sigma,y=alpha,ymin=alpha-se,ymax=alpha+se,group=1,color=sigmaf))+geom_hline(yintercept=0,lty=2,size=0.4)+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y=expression(alpha))+scale_x_continuous(limits=c(0.2,1.7),breaks=c(0.3,0.9,1.5))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)
+#pdf(file="compression_exp1.pdf",height=1.4,width=1.3)
+ggplot(alpha_d_HMC, aes(x=sigma,y=alpha,ymin=alpha-se,ymax=alpha+se,group=1,color=sigmaf))+geom_hline(yintercept=0,lty=2,size=0.4)+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y=expression(paste("central bias [",alpha,"]")))+scale_x_continuous(limits=c(0.2,1.7),breaks=c(0.3,0.9,1.5))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)
+#dev.off()
 ```
 
 A table with parameters, standard errors, and Bayesian 95% credible intervals
 ```{r tab-range-1}
-print(alpha_d_HMC)
+print(alpha_d_HMC,digits=2)
 ```
 
-Estimate the correlation between decrease in gain and compressive bias
-```{r}
-# compute individual coefficients (MAP estimates)
-tab_coeff <- coef(lmm0_HMC)$id
-tab_coeff$a1 <- tab_coeff$"ecc_diff" / tab_coeff$"ecc"
-tab_coeff$a2 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond1:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond1")
-tab_coeff$a3 <- (tab_coeff$"ecc_diff"+tab_coeff$"cond2:ecc_diff") / (tab_coeff$"ecc"+tab_coeff$"ecc:cond2")
-
-gain_diff <- aggregate(gain~sigmaf+id,d[d$sigmaf=="0.3",],mean)$gain - aggregate(gain~sigmaf+id,d[d$sigmaf=="1.5",],mean)$gain
-
-# sanity check
-# all(aggregate(gain~sigmaf+id,d[d$sigmaf=="0.3",],mean)$id == row.names(tab_coeff))
-cor.test(tab_coeff$a3, gain_diff)
-```
-
-
-## Cost function estimation
-
-### Ideal saccade gain under an asymmetric-quadratic loss
-
-The asymmetric loss function is defined as
-$$
-L(x)=\left[ a +(1-2a)\cdot 1_{x<0} \right] \cdot x^2
-$$
-where $a$ is the asymmetry parameter, and $x$ is the landing error measured in "gain units", i.e. in proportion of target distance (more precisely, if $E$ is the eccentricity of the target, and $S$ the saccade amplitude, then $x=\frac{S}{E}-1$). The aimpoint $\mu$ is defined as difference from a unit gain of 1, and $1_{x<0}$ is an indicator function that is equal to 1 when the argument in the subscript ($x<0$) is verified, and zero otherwise.
-
-The expected loss is calculated by integrating the cost of each motor oucome weighted by its probability, and can be calculated as
-$$
-\begin{align}
-\mathbb{E}(L \mid \mu ,\sigma)=& \int_{-\infty}^{\infty} L(x) \cdot \phi \left(\frac{x-\mu}{\sigma}\right) \, dx \\
-=&\left( 1-a\right)\left( \frac{{{\mu}^{2}}+{{\sigma}^{2}}}{2}+\frac{\frac{\sqrt{\pi}}{\sqrt{2}}\cdot \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma}\right) \cdot \left( {{\mu}^{2}}+{{\sigma}^{2}}\right) -\mu\cdot \sigma\cdot {{e}^{-\frac{{{\mu}^{2}}}{2 {{\sigma}^{2}}}}}}{\sqrt{2\pi}}\right) \\
-&+a \left( \frac{{{\mu}^{2}}+{{\sigma}^{2}}}{2}-\frac{\frac{\sqrt{\pi}}{\sqrt{2}}\cdot \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma}\right) \cdot \left( {{\mu}^{2}}+{{\sigma}^{2}}\right) -\mu\cdot \sigma \cdot {{e}^{-\frac{{{\mu}^{2}}}{2 {{\sigma}^{2}}}}}}{\sqrt{2\pi}}\right) \\
-=& \frac{\mu^2+\sigma^2}{2} + (1-2a) \frac{(\mu^2 + \sigma^2) \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma} \right)}{2} + (2a-1) \frac{\mu \sigma e^{-\frac{\mu^2}{2 \sigma^2}}}{\sqrt{2\pi}}\\
-=& \frac{\mu^2+\sigma^2}{2} + (1-2a) \left[ \frac{(\mu^2 + \sigma^2) \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma} \right)}{2} - \frac{\mu \sigma e^{-\frac{\mu^2}{2 \sigma^2}}}{\sqrt{2\pi}} \right]
-\end{align}
-$$
-where we have assumed that the variability of motor outcomes is well described by a Gaussian distribution $x \sim \mathcal{N}(\mu,\sigma^2)$ ($\phi$ indicates the Gaussian probability density function).
-It is easy to verify that when $a=0.5$ (meaning that the cost function is symmetric) the last two terms of the function cancel out. In this case the minimum of the expected cost is obtained for $\mu=0$, as it should be, and depends on the variability (it is precisely $\frac{\sigma^2}{2}$).
-
-Given a certain variability $\sigma$ of the motor outcomes, and a given cost asymmetry $a$, there is only one ideal aimpoint $\mu$ which minimizes the expected cost. The function is convex and it is straightforward to use one dimensional numerical optimization method (e.g. Brent method) to quickly find the minimum.
-
-### Shape of saccade landing distributions
-To fit the model on individual data, in the article we assumed that the variability of motor outcomes is Gaussian. To check that this is a reasonable assumption, we can verify that the distribution of saccade gain are symmetric, by computing their non-parametric skew. The non-parametric skew is defined as the difference between mean and median, divided by the standard deviation. Since the mean lies less than one standard deviation from the mean for any distribution, this metric is bounded between -1 and 1.
-
-
-```{r}
-skewedness <- function(x){
-	(mean(x) - median(x)) / sd(x)
-}
-dagsk <- aggregate(gain ~ sigmaf+id +tarX  , d,  skewedness) # average skew for each distribution (eccentricity & subject)
-t.test(aggregate(gain ~ id  , dagsk, mean)$gain) # test average skew per subject
-
-dagsk$tarXf <- factor(dagsk$tarX)
-summary(aov(gain ~ sigmaf + tarXf + Error(id/(sigmaf+tarXf)), dagsk)) # does skew vary with sigma or eccntricity?
-```
-
-
-### Code for estimating asymmetrical function
-
-```{r asymfunctions, echo=FALSE}
-### quadratic loss // closed-form for expected loss
-loss <- function(err, a){
-	(a + (1-2*a)*(err<0)) * abs(err)^2#(1.687576)
-}
-
-expected_loss <- function(aim_p, sig, a){
-	(aim_p^2+sig^2)/2 + ((1-2*a)*(aim_p^2+sig^2)*erf(-aim_p/(sqrt(2)*sig)))/2 + ((2*a-1)*aim_p*sig *exp(-(aim_p^2)/(2*sig^2)))/ sqrt(2*pi)
-}
-
-# derivative of expected loss with respect to the aim point
-ELderiv <- function(aim_p, sig, a){
-	u <- aim_p; s<-sig;
-	e_1 <- (2*a-1)*u*erf(u/(sqrt(2)*s)) +u +2*s*(2*a-1)*exp(-(u^2)/(2*s^2))/(sqrt(2*pi))
-	return(e_1)
-}
-
-# compute ideal aimpoint using gradient descent # unnecessary
-# idealAimpoint <- function(sig, a){
-# 	stepSize<-1
-# 	convTh<-1e-5
-# 	maxIt<-1e8
-# 	converged <- F
-# 	it <- 0
-# 	g <- -0.1
-# 	while(converged == F & it<maxIt){
-# 		it <- it+1
-# 		g_new <- g - stepSize*ELderiv(g, sig, a)
-# 		if(abs(g_new - g)<=convTh){
-# 			converged<-T
-# 		}
-# 		g <- g_new
-# 	}
-# 	if(converged == F){
-# 		warning(paste(it,">",maxIt,"; max number of iterations exceeded!", sep=""))
-# 	}
-# 	return(g_new)
-# }
-
-idealAimpoint <- function(sig, a){
-  exp_cost <- function(aim_p) expected_loss(aim_p, sig, a)
-	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
-}
-
-MSE_a <- function(par, d){
-	MSE <- 0
-	for(i in 1:3){
-		MSE <- MSE + sum(d$err_g[d$cond==i]-idealAimpoint(par[i], par[4]))^2
-	}
-	return(MSE/nrow(d))
-}
-
-
-idealAimpoint_v <- function(sig, a){
-	aimp <- vector("numeric",length(sig))
-	for(i in 1:length(sig)){
-		aimp[i] <- idealAimpoint(sig[i],a)
-	}
-	return(aimp)
-}
-
-# negative log likelihood function for a single subject
-# par = c(sig1, sig2, sig3, alpha)
-negloglik_single <- function(par, d){
-	aimpoint <- vector("numeric",3)
-	L <- 0
-	for(i in 1:3){
-		# integrand <-function(x, aim_p) loss(x, par[4])*dnorm(x, mean=aim_p, sd= par[i])
-		# exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
-		# aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
-		aimpoint[i] <- idealAimpoint(par[i], par[4])
-		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
-	}
-	return(L)
-}
-
-### ------------------------------------------------------------------------------------- ###
-# log likelihood for parametric (null) models
-
-# two parameters (mean+sd) for each condition
-# par = c(sd1, sd2, sd3, intercept, slope)
-negloglik_m00 <-function(d, par){
-	L <- 0
-	for(i in 1:3){
-		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=par[4]+par[i]*par[5], sd= par[i], log=TRUE))
-
-	}
-	return(L)
-}
-
-MSE_00 <- function(par, d){
-	MSE <- 0
-	for(i in 1:3){
-		MSE <- MSE + sum(d$err_g[d$cond==i]-(par[4]+par[i]*par[5]))^2
-	}
-	return(MSE/nrow(d))
-}
-
-
-### ------------------------------------------------------------------------------------- ###
-# alternative version with robust loss function
-
-# Robust loss function (downweight extreme errors)
-# typical values for k, which provide high efficiency also in the normal case, are then
-# k = sigma_hat * 4.685 # for Bisquare function
-# (these values are taken from John Fox notes on robust regression,
-# avalable here: http://users.stat.umn.edu/~sandy/courses/8053/handouts/robust.pdf)
-bisquare_loss <- function(err, k){
-	# this start quadratic then flattens to a constant value
-	ifelse(abs(err)<=k, ((k^2)/6) * (1 - (1-(err/k)^2)^3),  (k^2)/6)
-}
-
-loss_R <- function(err, par){
-	(par[2] + (1-2*par[2])*(err<0)) * bisquare_loss(err, k=par[1])
-}
-
-idealAimpoint_R <- function(sig, par){
-	integrand <-function(x, aim_p) loss_R(x, par)*dnorm(x, mean=aim_p, sd= sig)
-	exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
-	return(optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par)
-}
-
-idealAimpoint_v_R <- function(sig, par){
-	aimp <- vector("numeric",length(sig))
-	for(i in 1:length(sig)){
-		aimp[i] <- idealAimpoint_R(sig[i],par)
-	}
-	return(aimp)
-}
-
-# negative log likelihood function for a single subject
-# par = c(sig1, sig2, sig3, k, alpha)
-negloglik_single_R <- function(par, d){
-	aimpoint <- vector("numeric",3)
-	L <- 0
-	for(i in 1:3){
-		integrand <-function(x, aim_p) loss_R(x, par[4:5])*dnorm(x, mean=aim_p, sd= par[i])
-		exp_cost <- function(aim_p) integrate(integrand, lower=-Inf, upper=Inf, aim_p=aim_p)$value
-		aimpoint[i] <- optim(0, exp_cost, method = "Brent", lower = -2, upper = 2)$par
-		L <- L - sum(dnorm(d$err_g[d$cond==i], mean=aimpoint[i], sd= par[i], log=TRUE))
-	}
-	return(L)
-}
-
-MSE_R <- function(par, d){
-	MSE <- 0
-	for(i in 1:3){
-		MSE <- MSE + sum(d$err_g[d$cond==i]-idealAimpoint_R(par[i], par[4:5]))^2
-	}
-	return(MSE/nrow(d))
-}
-
-
-### ------------------------------------------------------------------------------------- ###
-# perform cross-validation of the quadratic-asymmetric model
-# and of the linear null-model above, byt holding one condition out at a time
-hcoCrossValidation <- function(d){
-
-	# split based on condition
-	nCs <- length(unique(d$cond))
-	Cs <- unique(d$cond)
-	dout <- {}
-
-	startpar <- c(0.12, 0.14, 0.18, 0.8)
-	par_LB <- c(1e-3, 1e-3, 1e-3, 0)
-	par_UB <-  c(0.5, 0.5, 0.5, 1)
-
-	# robust model
-	startparR <- c(0.12, 0.14, 0.18, 0.634483, 0.8)
-	par_LB_R <- c(1e-3, 1e-3, 1e-3, 1e-4, 0)
-	par_UB_R <-  c(0.5, 0.5, 0.5, 10, 1)
-
-	# estimate exponent of loss function
-	startpar_2 <- c(0.12, 0.14, 0.18, 2, 0.8)
-	par_LB_2 <- c(1e-3, 1e-3, 1e-3, 0.05, 0)
-	par_UB_2 <-  c(0.5, 0.5, 0.5, 5, 1)
-
-
-	# start par for null models
-	startpar00 <- c(0.12, 0.14, 0.18, 0, -0.5)
-	LB00 <- c(1e-3, 1e-3, 1e-3, -100, -100)
-	UB00 <- c(0.5, 0.5, 0.5, 100, 100)
-
-	cat(paste("condition-split cross-validation begin"))
-
-	# begin
-	t<-0
-	for(i in 1:nCs){
-		t <- t+1
-		c_test <- Cs[i]
-
-		dtest <- d[which(d$cond==c_test), ]
-		dtrain <- d[which(d$cond!=c_test), ]
-
-		# fit quadratic model
-		fit1 <- optim(par=startpar, fn=negloglik_single, d=dtrain, method="L-BFGS-B", lower=par_LB, upper=par_UB)
-		fit1 <- optim(par=fit1$par, fn=negloglik_single, d=dtrain, method="L-BFGS-B", lower=par_LB, upper=par_UB)
-		L1 <- -negloglik_single(fit1$par, dtest) # note the minus sign
-		MSE1 <- MSE_a(fit1$par, dtest)
-
-		# fit robust model
-		fitR <- optim(par=startparR, fn=negloglik_single_R, d=dtrain, method="L-BFGS-B", lower=par_LB_R, upper=par_UB_R)
-		L_R <- -negloglik_single_R(fitR$par, dtest) # note the minus sign
-		MSE_R <- MSE_R(fitR$par, dtest)
-
-		# null models
-		fit00 <- optim(par=startpar00, fn=negloglik_m00, d=dtrain, method="L-BFGS-B", lower=LB00, upper=UB00)
-		fit00 <- optim(par=fit00$par, fn=negloglik_m00, d=dtrain, method="L-BFGS-B", lower=LB00, upper=UB00)
-		L00 <- -negloglik_m00(dtest, fit00$par)
-		MSE00 <- MSE_00(fit00$par, dtest)
-
-		# store data
-		dout <- rbind(dout, data.frame(t, c_test, sig1=fit1$par[1], sig2=fit1$par[2], sig3=fit1$par[3], alpha=fit1$par[4], L1, L00, L_R, MSE1, MSE00, MSE_R, sig1R=fitR$par[1], sig2R=fitR$par[2], sig3R=fitR$par[3], alphaR=fitR$par[5], lhspR=fitR$par[4]))
-
-	}
-	cat(" ... completed!\n")
-	return(dout)
-}
-```
-
-After having loaded in memory the function for fitting the aymmetric cost models (see .Rmd file), we can estimate the parameter by maximum likelihood.
-
-```{r}
-# prepare data for fitting
-d$cond <- ifelse(d$sigmaf=="0.3",1,ifelse(d$sigmaf=="0.9",2,3))
-d$err_g <- d$gain - 1 # saccade error in gain units
-
-# run fit on all subjects
-startpar <- c(0.12, 0.14, 0.18, 0.7) # initial guesses
-startparR <- c(0.12, 0.14, 0.18, 0.634483, 0.8) # robust model
-par_LB_R <- c(1e-3, 1e-3, 1e-3, 1e-4, 0)
-par_UB_R <-  c(0.5, 0.5, 0.5, 10, 1)
-sig_values <- sort(unique(d$sigma))
-dfit <- {}
-dfit_2 <- {}
-dtestfit <- {}
-for(i in unique(d$id)){
-	
-	# fit assuming quadratic exponent
-	fit0 <- optim(par=startpar, fn=negloglik_single, d=d[d$id==i,], hessian=T, method="L-BFGS-B", lower=c(1e-3, 1e-3, 1e-3, 0), upper=c(0.5, 0.5, 0.5, 1))
-	par <- fit0$par
-	par_se <- sqrt(diag(MASS::ginv(fit0$hessian)))
-	
-	ideal_gain <- 1 + c(idealAimpoint(fit0$par[1], fit0$par[4]), 
-					idealAimpoint(fit0$par[2], fit0$par[4]), 
-					idealAimpoint(fit0$par[3], fit0$par[4]))
-	
-	# observed value of gain and standard deviations
-	observed_gain <- tapply(d$gain[d$id==i],d$sigmaf[d$id==i], mean)
-	observed_gain_se <- tapply(d$gain[d$id==i],d$sigmaf[d$id==i], bootMeanSE)	
-	observed_sd <- tapply(d$gain[d$id==i],d$sigmaf[d$id==i], sd)				
-	
-	# fit robust model
-	fitR <- optim(par=startparR, fn=negloglik_single_R, d=d[d$id==i,], hessian=T, method="L-BFGS-B", lower=par_LB_R, upper=par_UB_R)
-	par_R <- fitR$par
-	par_se_R <- sqrt(diag(MASS::ginv(fitR$hessian)))
-	ideal_gain_R <- 1 + c(idealAimpoint_v_R(fitR$par[1], fitR$par[4:5]), 
-					idealAimpoint_v_R(fitR$par[2], fitR$par[4:5]), 
-					idealAimpoint_v_R(fitR$par[3], fitR$par[4:5]))
-	
-	# store results
-	dfit <- rbind(dfit, data.frame(sigma=sig_values, STD=par[1:3], STD_se=par_se[1:3], 
-			alpha=par[4], alpha_se=par_se[4], id=i, ideal_gain, ideal_gain_R, observed_gain, observed_gain_se, observed_sd,
-			STD_R=par_R[1:3], STD_se=par_se_R[1:3], Lshp=par_R[4],  Lshp_se=par_se_R[4], alpha_R=par_R[5], alpha_se_R=par_se_R[5]))
-	
-	# store likelihood values
-	n_i <- nrow(d[d$id==i,])
-	L_a <- -fit0$value # store likelihood
-	L_R <- -fitR$value # minus sign
-	
-	# compute information theoretic criteria
-	# these are an approximation of the predictive quality of the model
-	# so for the model comparison we will use the cross-validation instead
-	AIC_a   <- 2*4 - 2*L_a
-	AIC_R   <- 2*5 - 2*L_R
-	
-	msea <- MSE_a(fit0$par, d[d$id==i,])
-	mser <- MSE_R(fitR$par, d[d$id==i,])
-	
-	AICc_a   <- AIC_a + (2*4^2 + 2*4)/(n_i - 4 - 1)
-	AICc_R   <- AIC_R + (2*5^2 + 2*5)/(n_i - 5 - 1)
-	
-	BIC_a   <- log(n_i)*4 - 2*L_a
-	BIC_R   <- log(n_i)*5 - 2*L_R
-	
-	dtestfit <- rbind(dtestfit, data.frame(id=i, L_a, msea, mser, L_R, L_R, AIC_a, AIC_R, AICc_a, AICc_R, BIC_a, BIC_R))
-	
-	
-}
-```
-
-Compute summary statistics from the results of model fitting
-
-```{r}
-# average estimate of cost asymmetry
-a <- mean(tapply(dfit$alpha, dfit$id, mean))
-aCI <- bootMeanCI(tapply(dfit$alpha, dfit$id, mean))
-round(a,digits=2)
-round(aCI,digits=2)
-
-# transform into cost ratio (for a constant error magnitude)
-round(a/(1-a),digits=1) 
-round(aCI/(1-aCI),digits=1)
-
-# robust loss functions
-round(mean(tapply(dfit$Lshp, dfit$id, mean)),digits=2)
-round(bootMeanCI(tapply(dfit$Lshp, dfit$id, mean)),digits=2)
-
-# averaged mse error
-round(mean(dtestfit$msea),digits=8)
-round(mean(dtestfit$mser),digits=8)
-```
-
-Plot results
-
-```{r, echo=F, fig.width=4, fig.height=4}
-r2_fit <- round(summary(lm(dfit$ideal_gain~dfit$observed_gain))$r.squared,digits=2)
-r2_label <- paste("R^2==",r2_fit)
-dfit$sigmaf <- factor(round(dfit$sigma,digits=1))
-ggplot(dfit, aes(x=ideal_gain,y=observed_gain,ymin=observed_gain-observed_gain_se,ymax=observed_gain+observed_gain_se,color=sigmaf))+geom_abline(intercept=0,slope=1,lty=2,size=0.4)+geom_errorbar(width=0)+geom_point(size=2)+coord_equal()+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma, " [deg]")))+nice_theme+lims(x=c(0.72,1.018),y=c(0.72,1.018))+labs(x="predicted gain",y="observed gain")+annotate("text",label=r2_label,x=0.96,y=0.74,parse=T,size=2.5)
-```
-
-Plot the expected relationship between saccade variability and gain
-
-```{r, echo=F, fig.width=7, fig.height=4}
-# compute prediction lines
-nd <- expand.grid(CV=seq(0.02,0.4,length.out=100),id=unique(dfit$id),gain=NA, KEEP.OUT.ATTRS = F)
-R_i <- vector("numeric",length(unique(dfit$id)))
-err_i <- vector("numeric",length(unique(dfit$id)))
-i_c <- 0
-for(i in unique(dfit$id)){
-	i_c <- i_c + 1
-	a_i <- mean(dfit$alpha[dfit$id==i])
-	nd$gain[nd$id==i] <- 1+idealAimpoint_v(nd$CV[nd$id==i], a_i)
-	R_i[i_c] <- summary(lm(ideal_gain~observed_gain,dfit[dfit$id==i,]))$r.squared
-	err_i[i_c] <- with(dfit[dfit$id==i,], mean(abs(ideal_gain-observed_gain)))
-}
-names(R_i)<- unique(dfit$id)
-names(err_i)<- unique(dfit$id)
-
-nd$observed_gain <- nd$gain
-nd$observed_gain_se <- NA
-
-dfit2 <- aggregate(alpha~id,dfit,mean)
-# dfit2$label <- paste("a =",round(dfit2$alpha,digits=2))
-dfit2$label <- paste("cost ratio =",round(dfit2$alpha/(1-dfit2$alpha),digits=0))
-
-dfit$id_n <- as.numeric(dfit$id)
-nd$id_n <- as.numeric(nd$id)
-
-ggplot(dfit, aes(x=STD,y=observed_gain,color=sigmaf))+geom_line(data=nd,aes(x=CV,y=gain),col="black")+geom_errorbar(aes(ymin=observed_gain-2*observed_gain_se,ymax=observed_gain+2*observed_gain_se),width=0)+geom_point(size=2)+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma, " [deg]")))+nice_theme+labs(x="gain variability [SD]",y="gain")+facet_wrap(~id_n,ncol=6)+coord_cartesian(xlim=c(0.05,0.31),ylim=c(0.7,1.02))
-
-```
-
-
-### Cross-validation
-
-This code run the cross-validation test: each model is iteratively fitted on two of the conditions, then its predictive ability is evaluated on the hold out condition.
-
-```{r}
-if(!file.exists("./data/CVres_v2_exp1.txt")){
-  # begin cross-validation
-  dcv <- {}
-  for(i in unique(d$id)){
-    d_i <- hcoCrossValidation(d[d$id==i,])
-    d_i$id <- i
-    dcv <- rbind(dcv, d_i)
-  }
-  write.table(dcv, "./data/CVres_v2_exp1.txt", quote=F, sep="\t",row.names=F)
-}else{
-  dcv <- read.table("./data/CVres_v2_exp1.txt", header=T, sep="\t")
-}
-
-dcv$L1diff <- dcv$L1 - dcv$L00
-dagW <- aggregate(L1diff~id, dcv, sum)
-sum(dagW$L1diff>0) # for how many subjects the quadratic model is better than the null (out of 12)
-mean(dagW$L1diff) # mean log likelihood difference
-range(dagW$L1diff) # range of log likelihood differences
-```
-
-Some plots of the cross-validated log-likelihood and error, first relative to the null model, then relative to the model with robust loss functions.
-
-```{r plot-cv-1, echo=F, fig.width=4, fig.height=2}
-# histogram log-lok difference
-dcv$L1diff <- dcv$L1 - dcv$L00
-dcv$LRdiff <- dcv$L_R - dcv$L00
-dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, sum)
-dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
-dagL$model <- ifelse(dagL$time==1, "quadratic","robust (bisquare)")
-dag2 <- aggregate(L1diff~model, dagL, mean)
-dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
-ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated likelihood\nrelative to descriptive (null) model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))+scale_x_continuous(limits=c(0,18000))
-```
-
-```{r plot-cv-2, echo=F, fig.width=4, fig.height=2}
-# histogram MSE differences
-dcv$L1diff <- dcv$MSE1 - dcv$MSE00
-dcv$LRdiff <- dcv$MSE_R - dcv$MSE00
-dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, mean)
-dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
-dagL$model <- ifelse(dagL$time==1, "quadratic", "robust (bisquare)")
-dag2 <- aggregate(L1diff~model, dagL, mean)
-dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
-ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated error\nrelative to descriptive (null) model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))+scale_x_continuous(limits=c(-300,0))
-```
-
-```{r plot-cv-3, echo=F, fig.width=4, fig.height=2}
-# histogram log-lok difference - wrt robust
-dcv$L1diff <- dcv$L1 - dcv$L_R
-dcv$LRdiff <- dcv$L_R - dcv$L_R
-dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, sum)
-dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
-dagL$model <- ifelse(dagL$time==1, "quadratic", "robust (bisquare)")
-dag2 <- aggregate(L1diff~model, dagL, mean)
-dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
-ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated likelihood\nrelative to robust-loss model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))
-```
-
-```{r plot-cv-4, echo=F, fig.width=4, fig.height=2}
-# histogram MSE differences - wrt robust
-dcv$L1diff <- dcv$MSE1 - dcv$MSE_R
-dcv$LRdiff <- dcv$MSE_R - dcv$MSE_R
-dagW <- aggregate(cbind(L1diff,LRdiff)~id, dcv, mean)
-dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
-dagL$model <- ifelse(dagL$time==1, "quadratic","robust (bisquare)")
-dag2 <- aggregate(L1diff~model, dagL, mean)
-dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
-ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated MSE\nrelative to robust-loss model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))
-```
 
 
 ## Secondary saccade analysis
@@ -1101,10 +467,12 @@ d2$s2_dir <- ifelse(d2$sameDir==1, "same as primary", "opposite to primary")
 d2$primary_xerr_sacdir <- d2$primary_xerror * d2$side
 d2$undershoot <- ifelse(d2$primary_xerr_sacdir<=0,1,0) 
 d2$undershoot_label <- ifelse(d2$undershoot==1, "after\nundershoot", "after\novershoot")
-d2$corrective <- ifelse(d2$errorChange< 3,1,0)
-
 d2$sacXresp_sacdir <- d2$sacXresp_s * sign(d2$primary_xresp_s)
 
+# save for global analysis 
+write.table(d2, file="secondary_exp1_nocutoff.txt")
+
+d2$corrective <- ifelse(d2$errorChange< 3,1,0)
 d2 <- d2[d2$corrective==1,]
 write.table(d2, file="./data/secondary_exp1.txt",quote=F, sep="\t")
 
@@ -1123,59 +491,3 @@ ggplot(d2, aes(x=sacRT, fill=sigmaf))+geom_histogram(binwidth=25,alpha=0.85)+geo
 ```{r, echo=FALSE, fig.width=6,fig.height=2.5}
 ggplot(d2, aes(x=primary_xerr_sacdir,y=sacXresp_sacdir, color=sigmaf))+geom_vline(xintercept=0,size=0.2,lty=2)+geom_hline(yintercept=0,size=0.2,lty=2)+nice_theme+labs(x="primary saccade error [deg]", y="seconday saccade\namplitude [deg]")+geom_abline(slope=-1,intercept=0,size=0.2, lty=1)+geom_point(pch=21,size=1)+scale_color_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")),guide=F)+facet_grid(.~sigmaf)+scale_y_continuous(breaks=seq(-50, 50, 2),limits=c(-5,5))+scale_x_continuous(breaks=seq(-50, 50, 2),limits=c(-5,5))+coord_equal()  
 ```
-
-Here we investigate the relationship between cost asymmetry and the cost due to changing direction in a sequence of saccades (e.g. how much slower is the initiation of a return corrective saccade relative to a forward one?).
-
-```{r}
-# given that there are relatively few observations, and that latency differences are generally noisy, I use the median which is more robust and less influenced by single extreme points (call them "outliers" if you want)
-medianDiff <- function(dd) median(dd$res_RT[dd$s2_dir=="opposite to primary"])-median(dd$res_RT[dd$s2_dir=="same as primary"])
-bootmedianDiffSE <- function(dd,nsim=1000){
-	bootF <- function(dd,i) medianDiff(dd[i,])
-	bootRes <- boot::boot(dd,bootF,nsim)
-	return(sd(bootRes$t,na.rm=T))
-}
-
-# fit model at group level, including quadratic component
-library(lme4)
-m2all <- lmer(sacRT~sacXresp+I(sacXresp^2) + (sacXresp+I(sacXresp^2)|id), d2)
-summary(m2all)
-d2$res_RT <- residuals(m2all)
-
-# nd <- data.frame(sacXresp=seq(0,4,length.out=100))
-# nd$sacRT <- predict(m2all, newdata=nd, re.form=NA)
-# pdf(title="secondary_latency.pdf",width=2,height=2)
-# ggplot(d2,aes(x=sacXresp,y=sacRT))+geom_point(color="dark grey",alpha=0.5)+nice_theme+labs(x="amplitude [deg]",y="latency [ms]")+scale_x_continuous(limits=c(0,4))+geom_line(data=nd,size=1)
-# dev.off()
-
-# pair values (alpha & sacc. pars.)
-d_a <- aggregate(alpha ~ id, dfit, mean)
-d_a$alpha_se <- aggregate(alpha_se ~ id, dfit, mean)$alpha_se
-d_a$RTdiff <- NA
-d_a$RTdiff_se <- NA
-d_a$errdiff <- NA
-d_a$errChangediff <- NA
-for(i in unique(d_a$id)){
-
-	dd <- d2[d2$id==i,]
-	
-	d_a$RTdiff[d_a$id==i] <- medianDiff(dd)
-	d_a$RTdiff_se[d_a$id==i] <- bootmedianDiffSE(dd,nsim=1000)
-
-	d_a$errdiff[d_a$id==i] <- mean(dd$x_err[dd$s2_dir=="opposite to primary"])-mean(dd$x_err[dd$s2_dir=="same as primary"])
-	d_a$errChangediff[d_a$id==i] <- mean(dd$errorChange[dd$s2_dir=="opposite to primary"])-mean(dd$errorChange[dd$s2_dir=="same as primary"])
-}
-
-d_a$cost_ratio <- d_a$alpha / (1-d_a$alpha)
-d_a$log_cost_ratio <- log(d_a$cost_ratio)
-
-# measure correlation
-cor.test(d_a$log_cost_ratio, d_a$RTdiff)
-```
-
-Plot correlation togheter with the 75% and 95% confidence ellipses.
-
-```{r, echo=FALSE, fig.width=3,fig.height=3}
-ggplot(d_a, aes(x=log_cost_ratio,y=RTdiff,ymax=RTdiff+RTdiff_se,ymin=RTdiff-RTdiff_se))+geom_hline(yintercept=0,lty=3,col="grey",size=0.4)+stat_ellipse(type="norm",level=0.75,col="grey",size=0.3)+stat_ellipse(type="norm",level=0.95,col="grey",size=0.3)+geom_errorbar(width=0,color="dark grey")+geom_point(size=2.5,pch=19)+nice_theme+labs(x=expression(paste("log"," ", bgroup("(",frac(italic("cost overshoot"),italic("cost undershoot")),")"))), y="secondary saccades\nlatency difference [ms]")+scale_y_continuous(breaks=seq(-100,200,25))+coord_cartesian(ylim=c(-50, 115))
-```
-
-

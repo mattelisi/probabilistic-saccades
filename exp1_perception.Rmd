@@ -174,8 +174,16 @@ jnd_w_av2$par <- "PSE"
 colnames(jnd_w_av2)[3] <- "hat"
 jnd_w_av <- rbind(jnd_w_av1, jnd_w_av2)
 
+# save averaged data
+write.table(jnd_w,file="data/jnd_averaged",quote=F,sep="\t",row.names=F)
+
 # plot
-ggplot(jnd_w_av, aes(x=sigma,y=hat, ymin=hat-se,ymax=hat+se,group=par,color=par))+geom_line()+geom_point(size=2)+nice_theme+labs(y="[dva]", x=expression(paste(sigma[blob], " [dva]"))) +geom_errorbar(width=0.05)+scale_y_continuous(limits=c(-0.2,2.1))+scale_color_manual(values=c("black","dark grey"),name="")+scale_x_continuous(limits=c(0.2,1.8))
+#ggplot(jnd_w_av, aes(x=sigma,y=hat, ymin=hat-se,ymax=hat+se,group=par,color=par))+geom_line()+geom_point(size=2)+nice_theme+labs(y="[dva]", x=expression(paste(sigma[blob], " [dva]"))) +geom_errorbar(width=0.05)+scale_y_continuous(limits=c(-0.2,2.1))+scale_color_manual(values=c("black","dark grey"),name="")+scale_x_continuous(limits=c(0.2,1.8))
+
+jnd_w_av$sigmaf <- factor(round(jnd_w_av$sigma,digits=1))
+#pdf(file="jnd3.pdf",height=1.6,width=1.35)
+ggplot(jnd_w_av[jnd_w_av$par=="JND",], aes(x=sigma,y=hat, ymin=hat-se,ymax=hat+se,group=par,color=sigmaf))+geom_line(color="black")+nice_theme+labs(y="JND [deg]", x=expression(paste(sigma, " [deg]"))) +geom_errorbar(width=0,color="black")+geom_point(size=2.3)+scale_y_continuous(limits=c(0.4,2.3))+scale_color_manual(values=c("black","dark grey","blue"),name=expression(paste(sigma[blob], " [deg]")),guide=F)+scale_x_continuous(limits=c(0.2,1.61),breaks=c(0.3,0.9,1.5))
+#dev.off()
 ```
 
 Finally, print a table with average values and compute a repeated-measures ANOVA
