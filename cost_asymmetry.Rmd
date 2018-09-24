@@ -1,0 +1,296 @@
+---
+title: "Cost-asymmetry analysis"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.path="./Figs/",message=FALSE,warning=FALSE)
+```
+
+```{r, echo=F}
+rm(list=ls())
+setwd("~/git_local/OSF_repo_probsaccades/")
+library(mlisi)
+d <- read.table("./data/saccades_xp123_allfit.txt",sep="\t",header=T)
+source("asymCostFitFunctions_multi.R")
+d$fit_level <- factor(paste(d$sess_n, d$posu,sep="_"))
+d$id_i <- factor(paste(d$id, d$exp,sep="_"))
+d$cond <- as.numeric(d$fit_level)
+d$err_g <- d$gain - 1 # saccade error in gain units
+
+dfit <- read.table("./data/fit_all_multi.txt")
+dtestfit <- read.table("./data/test_fit_all_multi.txt")
+
+library(ggplot2) # nicer theme
+nice_theme <- theme_bw()+theme(text=element_text(family="Helvetica",size=9),panel.border=element_blank(),strip.background = element_rect(fill="white",color="white",size=0),strip.text=element_text(size=rel(0.8)),panel.grid.major.x=element_blank(),panel.grid.major.y=element_blank(),panel.grid.minor=element_blank(),axis.line.x=element_line(size=.4),axis.line.y=element_line(size=.4),axis.text.x=element_text(size=7,color="black"),axis.text.y=element_text(size=7,color="black"),axis.line=element_line(size=.4), axis.ticks=element_line(color="black"))
+```
+
+This file document the estimation of the cost function asymmetry, and the analysis of secondary saccades for all the three experiments.
+
+### Ideal saccade gain under an asymmetric-quadratic loss
+
+The asymmetric loss function is defined as
+$$
+L(x)=\left[ a +(1-2a)\cdot 1_{x<0} \right] \cdot x^2
+$$
+where $a$ is the asymmetry parameter, and $x$ is the landing error measured in "gain units", i.e. in proportion of target distance (more precisely, if $E$ is the eccentricity of the target, and $S$ the saccade amplitude, then $x=\frac{S}{E}-1$). The aimpoint $\mu$ is defined as difference from a unit gain of 1, and $1_{x<0}$ is an indicator function that is equal to 1 when the argument in the subscript ($x<0$) is verified, and zero otherwise.
+
+The expected loss is calculated by integrating the cost of each motor oucome weighted by its probability, and can be calculated as
+$$
+\begin{align}
+\mathbb{E}(L \mid \mu ,\sigma)=& \int_{-\infty}^{\infty} L(x) \cdot \phi \left(\frac{x-\mu}{\sigma}\right) \, dx \\
+=&\left( 1-a\right)\left( \frac{{{\mu}^{2}}+{{\sigma}^{2}}}{2}+\frac{\frac{\sqrt{\pi}}{\sqrt{2}}\cdot \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma}\right) \cdot \left( {{\mu}^{2}}+{{\sigma}^{2}}\right) -\mu\cdot \sigma\cdot {{e}^{-\frac{{{\mu}^{2}}}{2 {{\sigma}^{2}}}}}}{\sqrt{2\pi}}\right) \\
+&+a \left( \frac{{{\mu}^{2}}+{{\sigma}^{2}}}{2}-\frac{\frac{\sqrt{\pi}}{\sqrt{2}}\cdot \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma}\right) \cdot \left( {{\mu}^{2}}+{{\sigma}^{2}}\right) -\mu\cdot \sigma \cdot {{e}^{-\frac{{{\mu}^{2}}}{2 {{\sigma}^{2}}}}}}{\sqrt{2\pi}}\right) \\
+=& \frac{\mu^2+\sigma^2}{2} + (1-2a) \frac{(\mu^2 + \sigma^2) \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma} \right)}{2} + (2a-1) \frac{\mu \sigma e^{-\frac{\mu^2}{2 \sigma^2}}}{\sqrt{2\pi}}\\
+=& \frac{\mu^2+\sigma^2}{2} + (1-2a) \left[ \frac{(\mu^2 + \sigma^2) \mathrm{erf}\left( \frac{-\mu}{\sqrt{2} \sigma} \right)}{2} - \frac{\mu \sigma e^{-\frac{\mu^2}{2 \sigma^2}}}{\sqrt{2\pi}} \right]
+\end{align}
+$$
+where we have assumed that the variability of motor outcomes is well described by a Gaussian distribution $x \sim \mathcal{N}(\mu,\sigma^2)$ ($\phi$ indicates the Gaussian probability density function).
+It is easy to verify that when $a=0.5$ (meaning that the cost function is symmetric) the last two terms of the function cancel out. In this case the minimum of the expected cost is obtained for $\mu=0$, as it should be, and depends on the variability (it is precisely $\frac{\sigma^2}{2}$).
+
+Given a certain variability $\sigma$ of the motor outcomes, and a given cost asymmetry $a$, there is only one ideal aimpoint $\mu$ which minimizes the expected cost. The function is convex and it is straightforward to use one dimensional numerical optimization method (e.g. Brent method) to quickly find the minimum.
+
+Here is a plot of the predicted and observed gain for each condition.
+
+```{r, echo=FALSE, fig.width=5, fig.height=3}
+#pdf("predicted_gain_split.4.pdf",width=5,height=3)
+ggplot(dfit, aes(x=ideal_gain,y=observed_gain,ymin=observed_gain-observed_gain_se,ymax=observed_gain+observed_gain_se,color=factor(posu),shape=session))+geom_abline(intercept=0,slope=1,lty=2,size=0.4)+geom_errorbar(width=0)+geom_point(size=1)+coord_equal(xlim=c(0.7,1.12),ylim=c(0.7,1.12))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="predicted gain",y="observed gain")+facet_grid(exp~posu)+scale_shape_manual(values=c(21,22,21,22))
+#dev.off()
+```
+```{r, echo=FALSE, fig.width=6, fig.height=5}
+# plot individual fits with predictions
+nd <- expand.grid(STD=seq(0.02,0.4,length.out=100),id.1=unique(dfit$id.1),gain=NA, KEEP.OUT.ATTRS = F)
+R_i <- vector("numeric",length(unique(dfit$id.1)))
+err_i <- vector("numeric",length(unique(dfit$id.1)))
+alpha_i <- vector("numeric",length(unique(dfit$id.1)))
+
+i_c <- 0
+for(i in unique(dfit$id.1)){
+  i_c <- i_c + 1
+  a_i <- mean(dfit$alpha[dfit$id.1==i])
+  nd$gain[nd$id.1==i] <- 1+idealAimpoint_v(nd$STD[nd$id.1==i], a_i)
+  R_i[i_c] <- summary(lm(ideal_gain~observed_gain,dfit[dfit$id.1==i,]))$r.squared
+  err_i[i_c] <- with(dfit[dfit$id.1==i,], mean(abs(ideal_gain-observed_gain)))
+  alpha_i[i_c] <- mean(dfit$alpha[dfit$id.1==i])
+}
+names(R_i)<- unique(dfit$id.1)
+names(err_i)<- unique(dfit$id.1)
+
+nd$observed_gain <- nd$gain
+nd$observed_gain_se <- NA
+
+dfit$id_n <- paste(as.numeric(dfit$id.1)," (",substr(dfit$id.1,4,7),")",sep="")
+nd$id_n <- paste(as.numeric(nd$id.1)," (",substr(nd$id.1,4,7),")",sep="")
+# 
+dfit$id_n <- factor(dfit$id_n, unique(dfit$id_n)[order(alpha_i)],ordered=T)
+nd$id_n <- factor(nd$id_n, unique(nd$id_n)[order(alpha_i)],ordered=T)
+
+#pdf("all_individual_fits.pdf",width=6,height=5)
+ggplot(dfit, aes(x=STD,y=observed_gain,color=factor(posu),shape=session))+geom_line(data=nd,aes(x=STD,y=gain,shape="large"),col="black")+geom_errorbar(aes(ymin=observed_gain-1.96*observed_gain_se,ymax=observed_gain+1.96*observed_gain_se),width=0)+geom_point(size=1)+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="gain variability [SD]",y="gain")+coord_cartesian(xlim=c(0.05,0.33),ylim=c(0.7,1.13))+scale_shape_manual(values=c(21,19,21,19),guide=F)+facet_wrap(~id_n, ncol=10)#+scale_x_log10()
+#dev.off()
+```
+
+```{r, echo=FALSE, fig.width=4, fig.height=3.19}
+selsjs <- c("10 (exp1)","1 (exp1)","25 (exp2)","15 (exp2)","39 (exp3)","21 (exp3)")
+nd$id <- substr(nd$id.1,1,2)
+nd$exp <- substr(nd$id.1,4,7)
+
+dfit_i <- dfit[is.element(dfit$id_n,selsjs),]
+nd_i <- nd[is.element(nd$id_n,selsjs),]
+
+dfit_i$id_old <- dfit_i$id_n 
+dfit_i$id_n <- factor(ifelse(is.element(dfit_i$id,c("aa","db","gh")),1,2))
+nd_i$id_n <- factor(ifelse(is.element(nd_i$id,c("aa","db","gh")),1,2))
+
+#pdf("all_individual_fits.pdf",width=3,height=2.4)
+ggplot(dfit_i, aes(x=STD,y=observed_gain,color=factor(posu),shape=session,group=id))+geom_line(data=nd_i,aes(x=STD,y=gain, shape="large"),col="black")+geom_errorbarh(aes(xmin=STD-1.96*STD_se,xmax=STD+1.96*STD_se),width=0)+geom_errorbar(aes(ymin=observed_gain-1.96*observed_gain_se,ymax=observed_gain+1.96*observed_gain_se),width=0)+geom_point(size=1)+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="gain variability [SD]",y="gain")+scale_shape_manual(values=c(21,19,21,19),guide=F)+facet_grid(id_n~exp)+coord_cartesian(xlim=c(0.05,0.23),ylim=c(0.7,0.95))+scale_x_continuous(breaks=seq(0,0.3,0.1))+geom_text(data=dfit_i,aes(x=0.08,y=0.75,label=dfit_i$id),color="black")+geom_text(data=dfit_i,aes(x=0.09,y=0.7,label=dfit_i$id_old),color="black",size=3)
+#dev.off()
+```
+
+On average 
+```{r}
+dfit$CR <- dfit$alpha/(1-dfit$alpha)
+dfit$LOCR <- log(dfit$alpha/(1-dfit$alpha))
+
+dfit_ag <-aggregate(cbind(alpha, LOCR, CR)~ id + exp, dfit, mean)
+summary(aov(LOCR ~ exp, dfit_ag)) # anova on the log-transformed cost , so that residuals are normal
+
+round(with(dfit_ag, tapply(alpha, exp, median)),digits=2)
+with(dfit_ag, tapply(alpha, exp, FUN=bootFooCI, median, nsim=5000))
+
+round(with(dfit_ag, tapply(CR, exp, median)),digits=2)
+with(dfit_ag, tapply(CR, exp, FUN=bootFooCI, median,nsim=5000))
+```
+
+
+### Cross-validation
+
+This code run the cross-validation test: each model is iteratively fitted on two of the conditions, then its predictive ability is evaluated on the hold out condition.
+
+```{r}
+if(!file.exists("./data/CVres_all.txt")){
+  # begin cross-validation
+  dcv <- {}
+  for(i in unique(d$id_i)){
+    d_i <- hcoCrossValidation(d[d$id_i==i,])
+    d_i$id <- i
+    dcv <- rbind(dcv, d_i)
+  }
+  write.table(dcv, "./data/CVres_all.txt", quote=F, sep="\t",row.names=F)
+}else{
+  dcv <- read.table("./data/CVres_all.txt", header=T, sep="\t")
+}
+
+dcv$L1diff <- dcv$L1 - dcv$L00
+dagW <- aggregate(L1diff~id, dcv, sum)
+
+sum(dagW$L1diff>0) # for how many subjects the quadratic model is better than the null (out of 12)
+round(mean(dagW$L1diff)) # mean log likelihood difference
+#round(bootMeanSE(dagW$L1diff,nsim=5000)) # mean log likelihood difference
+round(range(dagW$L1diff)) # range of log likelihood differences
+```
+
+Some plots of the cross-validated log-likelihood and error, first relative to the null model, then relative to the model with robust loss functions.
+
+```{r plot-cv-1, echo=F, fig.width=4, fig.height=2}
+# histogram log-lok difference
+dcv$L1diff <- dcv$L1 - dcv$L00
+dcv$LRdiff <- dcv$L_R - dcv$L00
+dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, sum)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic","robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=10000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated likelihood\nrelative to descriptive (null) model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))#+scale_x_continuous(limits=c(0,18000))
+```
+
+```{r plot-cv-2, echo=F, fig.width=4, fig.height=2}
+# histogram MSE differences
+dcv$L1diff <- dcv$MSE1 - dcv$MSE00
+dcv$LRdiff <- dcv$MSE_R - dcv$MSE00
+dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, mean)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic", "robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated error\nrelative to descriptive (null) model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))+scale_x_continuous(limits=c(-300,0))
+```
+
+```{r plot-cv-3, echo=F, fig.width=4, fig.height=2}
+# histogram log-lok difference - wrt robust
+dcv$L1diff <- dcv$L1 - dcv$L_R
+dcv$LRdiff <- dcv$L_R - dcv$L_R
+dagW <- aggregate(cbind(L1diff, LRdiff)~id, dcv, sum)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic", "robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated likelihood\nrelative to robust-loss model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))
+```
+
+```{r plot-cv-4, echo=F, fig.width=4, fig.height=2}
+# histogram MSE differences - wrt robust
+dcv$L1diff <- dcv$MSE1 - dcv$MSE_R
+dcv$LRdiff <- dcv$MSE_R - dcv$MSE_R
+dagW <- aggregate(cbind(L1diff,LRdiff)~id, dcv, mean)
+dagL <- reshape(dagW, varying=list(2:3), idvar="id", direction="long")
+dagL$model <- ifelse(dagL$time==1, "quadratic","robust (bisquare)")
+dag2 <- aggregate(L1diff~model, dagL, mean)
+dag2$se <- aggregate(L1diff~model, dagL, bootMeanSE, nsim=50000)$L1diff
+ggplot(dag2, aes(y=model, x=L1diff, xmin=L1diff-se, xmax=L1diff+se))+geom_errorbarh(height=0,size=7.2,color="grey")+geom_point(pch="I",size=7,color="black")+labs(y="",x="cross-validated MSE\nrelative to robust-loss model")+nice_theme+ theme(panel.grid.major.y = element_line(colour="grey", size=0.2,linetype=1))
+```
+
+
+### Analysis of secondary saccades
+
+
+
+```{r}
+d2 <- read.table("./data/secondary_saccades_xp123_allfit.txt",sep="\t",header=T)
+
+# # explo plot
+# ggplot(d2, aes(x=rt,y=errorChange, color=factor(sacN_1)))+geom_hline(yintercept=0,size=0.2,lty=2)+nice_theme+labs(x="latency", y="change in position error")+geom_point(pch=21,size=1)+facet_grid(.~posu)
+
+# cut offs
+d2$corrective <- ifelse(d2$errorChange< 2.5 & d2$errorChange>-2.5, 1, 0)
+d2 <- d2[d2$sacN_1==2,]
+
+# ggplot(d2, aes(x=rt,y=errorChange, color=corrective))+geom_hline(yintercept=0,size=0.2,lty=2)+nice_theme+labs(x="latency", y="change in position error")+geom_point(pch=21,size=1)+facet_grid(.~posu)
+
+d2 <- d2[d2$corrective==1,]
+d2 <- d2[d2$rt>=30,]
+
+# # plot overall latencies distributions
+# dag <- aggregate(rt ~ posu + dir, d2, mean)
+# ggplot(d2, aes(x=rt, fill=factor(posu)))+geom_histogram(binwidth=25,alpha=0.85)+geom_vline(data=dag, aes(xintercept=rt, color=factor(posu)))+nice_theme+labs(x="secondary saccade latency [ms]")+scale_fill_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")))+scale_color_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")))+facet_grid(dir~posu)
+
+# given that there are relatively few observations, and that latency differences are generally noisy, I use the median which is more robust and less influenced by single extreme points (call them "outliers" if you want)
+medianDiff <- function(dd) median(dd$res_RT[dd$dir=="opposite to primary"])-median(dd$res_RT[dd$dir=="same as primary"])
+bootmedianDiffSE <- function(dd,nsim=1000){
+  bootF <- function(dd,i) medianDiff(dd[i,])
+  bootRes <- boot::boot(dd,bootF,nsim)
+  return(sd(bootRes$t,na.rm=T))
+}
+
+# fit model at group level, including quadratic component
+library(lme4)
+m2all <- lmer(rt ~ ampli + I(ampli^2) + exp + exp:ampli + exp:I(ampli^2) + (ampli+I(ampli^2)|id), d2)
+
+d2$res_RT <- residuals(m2all)
+
+# pair values (alpha & sacc. pars.)
+d2$id <- paste(d2$id, d2$exp,sep="_")
+d_a <- aggregate(alpha ~ id + exp, dfit, mean)
+d_a$alpha_se <- aggregate(alpha_se ~ id + exp, dfit, mean)$alpha_se
+d_a$id <- paste(d_a$id, d_a$exp,sep="_")
+
+d_a$RTdiff <- NA
+d_a$RTdiff_se <- NA
+d_a$errdiff <- NA
+d_a$errChangediff <- NA
+
+for(i in unique(d_a$id)){
+  
+  dd <- d2[d2$id==i,]
+  
+  d_a$RTdiff[d_a$id==i] <- medianDiff(dd)
+  d_a$RTdiff_se[d_a$id==i] <- bootmedianDiffSE(dd,nsim=1000)
+}
+
+d_a$cost_ratio <- d_a$alpha / (1-d_a$alpha)
+d_a$log_cost_ratio <- log(d_a$cost_ratio)
+
+# measure correlation
+mean(d_a$RTdiff)
+bootMeanCI(d_a$RTdiff)
+sum(d_a$RTdiff_se>60)
+mean(d_a$RTdiff_se[d_a$RTdiff_se>60])
+mean(d_a$RTdiff_se[d_a$RTdiff_se<=60])
+with(d_a[d_a$RTdiff_se<60,], cor.test(log_cost_ratio, RTdiff))
+```
+
+```{r}
+with(d_a[d_a$RTdiff_se<60 & d_a$exp=="exp1",], cor.test(log_cost_ratio, RTdiff))
+with(d_a[d_a$RTdiff_se<60 & d_a$exp=="exp2",], cor.test(log_cost_ratio, RTdiff))
+with(d_a[d_a$RTdiff_se<60 & d_a$exp=="exp3",], cor.test(log_cost_ratio, RTdiff))
+```
+
+
+
+```{r, echo=FALSE, fig.width=4, fig.height=2}
+#pdf("cost_corr_1.2.pdf",width=4,height=2)
+ggplot(d_a[d_a$RTdiff_se<60,], aes(x=log_cost_ratio,y=RTdiff,ymax=RTdiff+RTdiff_se,ymin=RTdiff-RTdiff_se))+geom_hline(yintercept=0,lty=3,col="grey",size=0.4)+geom_vline(xintercept=0,lty=3,col="grey",size=0.4)+stat_ellipse(type="norm",level=0.75,col="grey",size=0.3)+stat_ellipse(type="norm",level=0.95,col="grey",size=0.3)+geom_errorbar(width=0,color="black")+geom_point(size=1.5,pch=21)+nice_theme+labs(x=expression(paste("log"," ", bgroup("(",frac(italic("cost overshoot"),italic("cost undershoot")),")"))), y="secondary saccades\nlatency difference [ms]")+facet_grid(.~exp)+coord_cartesian(ylim=c(-150,200))+scale_y_continuous(breaks=seq(-200,300,50))
+#dev.off()
+```
+
+```{r, echo=FALSE, fig.width=3.1, fig.height=2.4}
+#pdf("cost_corr_2.1.pdf",width=3.1,height=2.4)
+# d_a <- d_a[sample(1:nrow(d_a)),]
+d_a <- d_a[seq(nrow(d_a),1,-1),]
+ggplot(d_a[d_a$RTdiff_se<60,], aes(x=log_cost_ratio,y=RTdiff,ymax=RTdiff+RTdiff_se,ymin=RTdiff-RTdiff_se,color=exp))+geom_hline(yintercept=0,lty=3,col="grey",size=0.5)+geom_vline(xintercept=0,lty=3,col="grey",size=0.5)+stat_ellipse(type="norm",level=0.75,col="black",size=0.3)+stat_ellipse(type="norm",level=0.95,col="black",size=0.3)+geom_errorbar(width=0)+geom_point(size=2,pch=19)+nice_theme+labs(x=expression(paste("log"," ", bgroup("(",frac(italic("cost overshoot"),italic("cost undershoot")),")"))), y="secondary saccades\nlatency difference [ms]")+scale_color_manual(values=c("black","red","dark grey"))+scale_y_continuous(breaks=seq(-200,200,50))+scale_x_continuous(breaks=seq(-3,6,1))+coord_cartesian(ylim=c(-160,220),xlim=c(-2.8,5.8))
+#dev.off()
+```
+
+
