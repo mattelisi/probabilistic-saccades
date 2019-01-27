@@ -1,5 +1,6 @@
-### --------------------------------------------------------------------------------------- ###
-# analysis of asymmetrical costs in saccade targeting
+# This script fir the asymmetric-cost model, as well as alternative models
+# store the parameters, and make some plots.
+# Matteo Lisi, 2019
 
 rm(list=ls())
 setwd("~/git_local/OSF_repo_probsaccades/")
@@ -23,6 +24,12 @@ dfit <- {}
 dfit_2 <- {}
 dtestfit <- {}
 
+bootStdSE <- function (v, nsim = 1000, ...){
+  bootFOO <- function(v, i) sd(v[i], na.rm = T, ...)
+  bootRes <- boot::boot(v, bootFOO, nsim)
+  return(sd(bootRes$t, na.rm = T))
+}
+
 cat("Begin...\n")
 for(i in unique(d$id_i)){
   
@@ -37,7 +44,8 @@ for(i in unique(d$id_i)){
   # observed value of gain and standard deviations
   observed_gain <- tapply(d$gain[d$id_i==i],d$fit_level[d$id_i==i], mean)
   observed_gain_se <- tapply(d$gain[d$id_i==i],d$fit_level[d$id_i==i], bootMeanSE)	
-  observed_sd <- tapply(d$gain[d$id_i==i],d$fit_level[d$id_i==i], sd)				
+  observed_sd <- tapply(d$gain[d$id_i==i],d$fit_level[d$id_i==i], sd)		
+  observed_sd_se <- tapply(d$gain[d$id_i==i],d$fit_level[d$id_i==i], bootStdSE)		
   
   # fit robust model
   fitR <- optim(par=startparR, fn=negloglik_multi_R, d=d[d$id_i==i,], hessian=T, method="L-BFGS-B", lower=par_LB_R, upper=par_UB_R)
@@ -62,7 +70,7 @@ for(i in unique(d$id_i)){
     exp <- rep("exp2",6) 
     
   }else if(unique(d$exp[d$id_i==i])=="exp3"){
-    posu <- c(1,2,3,1,2,3)
+    posu <- c(1,2,3,1,2,3) 
     sigma <- c(0.9, 0.9, 0.9, 0.9, 0.9, 0.9)
     PL <- c(146, 57, 50, 146, 57, 50)
     session <- c(rep("large",3),rep("small",3))
@@ -70,7 +78,7 @@ for(i in unique(d$id_i)){
   }
   
   # store results
-  dfit <- rbind(dfit, data.frame(id, exp,session,PL,sigma,posu, STD=par[1:6], STD_se=par_se[1:6], alpha=par[7], alpha_se=par_se[7], id=i, ideal_gain, ideal_gain_R, observed_gain, observed_gain_se, observed_sd, STD_R=par_R[1:6], STD_se=par_se_R[1:6], Lshp=par_R[7],  Lshp_se=par_se_R[7], alpha_R=par_R[8], alpha_se_R=par_se_R[8]))
+  dfit <- rbind(dfit, data.frame(id, exp,session,PL,sigma,posu, STD=par[1:6], STD_se=par_se[1:6], alpha=par[7], alpha_se=par_se[7], id=i, ideal_gain, ideal_gain_R, observed_gain, observed_gain_se, observed_sd, STD_R=par_R[1:6], STD_se=par_se_R[1:6], Lshp=par_R[7],  Lshp_se=par_se_R[7], alpha_R=par_R[8], alpha_se_R=par_se_R[8],observed_sd_se))
   
   # store likelihood values
   n_i <- nrow(d[d$id_i==i,])
@@ -97,27 +105,23 @@ for(i in unique(d$id_i)){
   cat("dataset ",i, "processed. moving on...\n")
   
 }
-
 # dfit$exp <- substr(dfit$id.1,4,7)
 
 ### --------------------------------------------------------------------------------------- ###
 # save results
-write.table(dfit, file=".data/fit_all_multi.txt")
-write.table(dtestfit, file=".data/test_fit_all_multi.txt")
+write.table(dfit, file="./data/fit_all_multi_v2.txt")
+write.table(dtestfit, file="./data/test_fit_all_multi_v2.txt")
 cat("...done!\n")
 
-### --------------------------------------------------------------------------------------- ###
+dfit <- read.table("./data/fit_all_multi_v2.txt")
+dtestfit <- read.table("./data/test_fit_all_multi_v2.txt")
+
 ### --------------------------------------------------------------------------------------- ###
 # some summary plots
 
+# graphical ggplot parameters
 library(ggplot2) # nicer theme
 nice_theme <- theme_bw()+theme(text=element_text(family="Helvetica",size=9),panel.border=element_blank(),strip.background = element_rect(fill="white",color="white",size=0),strip.text=element_text(size=rel(0.8)),panel.grid.major.x=element_blank(),panel.grid.major.y=element_blank(),panel.grid.minor=element_blank(),axis.line.x=element_line(size=.4),axis.line.y=element_line(size=.4),axis.text.x=element_text(size=7,color="black"),axis.text.y=element_text(size=7,color="black"),axis.line=element_line(size=.4), axis.ticks=element_line(color="black"))
-
-### --------------------------------------------------------------------------------------- ###
-# predicted and observed saccadic gain
-pdf("predicted_gain_split.pdf",width=5,height=1.8)
-ggplot(dfit, aes(x=ideal_gain,y=observed_gain,ymin=observed_gain-observed_gain_se,ymax=observed_gain+observed_gain_se,color=factor(posu),shape=session))+geom_abline(intercept=0,slope=1,lty=2,size=0.4)+geom_errorbar(width=0)+geom_point(size=1)+coord_equal(xlim=c(0.7,1.12),ylim=c(0.7,1.12))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="predicted gain",y="observed gain")+facet_grid(.~exp)+scale_shape_manual(values=c(21,19,21,19))
-dev.off()
 
 ### --------------------------------------------------------------------------------------- ###
 # plot individual fits with predictions
@@ -147,12 +151,43 @@ dfit2$label <- paste("cost ratio =",round(dfit2$alpha/(1-dfit2$alpha),digits=0))
 dfit$id_n <- paste(as.numeric(dfit$id.1)," (",substr(dfit$id.1,4,7),")",sep="")
 nd$id_n <- paste(as.numeric(nd$id.1)," (",substr(nd$id.1,4,7),")",sep="")
 
-# 
-dfit$id_n <- factor(dfit$id_n, unique(dfit$id_n)[order(alpha_i)],ordered=T)
-nd$id_n <- factor(nd$id_n, unique(nd$id_n)[order(alpha_i)],ordered=T)
+### --------------------------------------------------------------------------------------- ###
+# plot for paper
 
-pdf("all_individual_fits.pdf",width=6,height=5)
-ggplot(dfit, aes(x=STD,y=observed_gain,color=factor(posu),shape=session))+geom_line(data=nd,aes(x=STD,y=gain,shape="large"),col="black")+geom_errorbar(aes(ymin=observed_gain-1.96*observed_gain_se,ymax=observed_gain+1.96*observed_gain_se),width=0)+geom_point(size=1)+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="gain variability [SD]",y="gain")+coord_cartesian(xlim=c(0.05,0.33),ylim=c(0.7,1.13))+scale_shape_manual(values=c(21,19,21,19),guide=F)+facet_wrap(~id_n, ncol=10)#+scale_x_log10()
+# shape code factor
+dfit$shape <- ifelse(dfit$exp=="exp1","fixed-energy",ifelse(dfit$exp=="exp2",as.character(dfit$session),"fixed-size"))
+dfit$shape <- ifelse(dfit$exp=="exp2",dfit$shape, paste(dfit$shape," (",dfit$session,")",sep=""))
+dfit_avg <- aggregate(cbind(ideal_gain,observed_gain)~exp+posu,dfit,mean)
+
+## 1
+pdf("predicted_gain_split_R1.pdf",width=5,height=3)
+ggplot(dfit, aes(x=ideal_gain,y=observed_gain,ymin=observed_gain-observed_gain_se,ymax=observed_gain+observed_gain_se,color=factor(posu),shape=shape))+geom_abline(intercept=0,slope=1,lty=2,size=0.4)+geom_point(size=1,alpha=0.8)+coord_equal(xlim=c(0.7,1.12),ylim=c(0.7,1.12))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="predicted gain",y="observed gain")+facet_grid(exp~posu)+scale_shape_manual(values=c(21,19,17,15,22,15),name=NULL)+geom_hline(data=dfit_avg,aes(yintercept=observed_gain,color=factor(posu)),size=0.4,lty=3)+geom_vline(data=dfit_avg,aes(xintercept=ideal_gain,color=factor(posu)),size=0.4,lty=3)
+#+geom_errorbar(width=0,color="grey")
+dev.off()
+
+## 1.2
+dfit_SD_avg <- aggregate(cbind(STD,observed_sd)~exp+posu,dfit,mean)
+pdf("predicted_SD_split_R1.pdf",width=5,height=3)
+ggplot(dfit, aes(x=STD,y=observed_sd,color=factor(posu),shape=shape))+geom_abline(intercept=0,slope=1,lty=2,size=0.4)+geom_point(size=1,alpha=0.8)+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="predicted gain SD",y="observed gain SD")+facet_grid(exp~posu)+scale_shape_manual(values=c(21,19,17,15,22,15),name=NULL)+geom_hline(data=dfit_SD_avg,aes(yintercept=observed_sd,color=factor(posu)),size=0.4,lty=3)+geom_vline(data=dfit_SD_avg,aes(xintercept=STD,color=factor(posu)),size=0.4,lty=3)+coord_equal(xlim=c(0.01,0.34),ylim=c(0.01,0.34))
+#+geom_errorbar(width=0,color="grey")
+dev.off()
+
+## selected some example subjects
+## and plot individual bias-variance relationship
+selsjs <- c("10 (exp1)","1 (exp1)","25 (exp2)","15 (exp2)","39 (exp3)","21 (exp3)")
+nd$id <- substr(nd$id.1,1,2)
+nd$exp <- substr(nd$id.1,4,7)
+
+dfit_i <- dfit[is.element(dfit$id_n,selsjs),]
+nd_i <- nd[is.element(nd$id_n,selsjs),]
+
+dfit_i$id_old <- dfit_i$id_n 
+dfit_i$id_n <- factor(ifelse(is.element(dfit_i$id,c("aa","db","gh")),1,2))
+nd_i$id_n <- factor(ifelse(is.element(nd_i$id,c("aa","db","gh")),1,2))
+nd_i$shape <- NA
+
+pdf("all_individual_fits_R1.pdf",width=3,height=2.4)
+ggplot(dfit_i, aes(x=STD,y=observed_gain,color=factor(posu),shape=shape,group=id))+geom_line(data=nd_i,aes(x=STD,y=gain),col="black")+geom_errorbar(aes(ymin=observed_gain-1.96*observed_gain_se,ymax=observed_gain+1.96*observed_gain_se),width=0)+geom_point(size=1.5)+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="gain SD (model-based estimate)",y="observed gain")+scale_shape_manual(values=c(21,19,17,15,22,15),guide=F)+facet_grid(id_n~exp)+coord_cartesian(xlim=c(0.05,0.23),ylim=c(0.7,0.95))+scale_x_continuous(breaks=seq(0,0.3,0.1))
 dev.off()
 
 ### --------------------------------------------------------------------------------------- ###
@@ -170,14 +205,22 @@ d2 <- d2[d2$sacN_1==2,]
 ggplot(d2, aes(x=rt,y=errorChange, color=corrective))+geom_hline(yintercept=0,size=0.2,lty=2)+nice_theme+labs(x="latency", y="change in position error")+geom_point(pch=21,size=1)+facet_grid(.~posu)
 
 d2 <- d2[d2$corrective==1,]
-d2 <- d2[d2$rt>=30,]
+d2 <- d2[d2$rt>=30 ,]
 
 # plot overall latencies distributions
-dag <- aggregate(rt ~ posu + dir, d2, mean)
-ggplot(d2, aes(x=rt, fill=factor(posu)))+geom_histogram(binwidth=25,alpha=0.85)+geom_vline(data=dag, aes(xintercept=rt, color=factor(posu)))+nice_theme+labs(x="secondary saccade latency [ms]")+scale_fill_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")))+scale_color_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")))+facet_grid(dir~posu)
+d2$dir2 <- ifelse(d2$dir=="opposite to primary","backward","forward")
+dag <- aggregate(rt ~ posu + dir + dir2, d2, mean)
+pdf("secondary_RT_hist.pdf",width=4,height=2.2)
+ggplot(d2, aes(x=rt, fill=factor(posu)))+geom_histogram(binwidth=10,alpha=0.85)+geom_vline(data=dag, aes(xintercept=rt, color=factor(posu)))+nice_theme+labs(x="secondary saccade latency [ms]")+scale_fill_manual(values=c("black","dark grey", "blue"),guide=F)+scale_color_manual(values=c("black","dark grey", "blue"),guide=F)+facet_grid(dir2~posu)
+dev.off()
+
+# plot as cumulative distributions
+pdf("secondary_RT_ECDF.pdf",width=4.8,height=1.8)
+ggplot(d2, aes(x=rt,group=dir2,color=factor(posu),linetype=dir2))+geom_hline(yintercept=0.5,size=0.2,color="light grey",lty=1)+geom_vline(xintercept=seq(100,1000,100),size=0.2,color="light grey",lty=1)+ stat_ecdf(geom = "step",size=0.6)+facet_grid(.~posu)+nice_theme+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+labs(y="cumulative probability",x="secondary saccade latency [ms]")+scale_linetype_manual(values=c(2,1),name="direction")+scale_x_continuous(breaks=seq(100,1000,100))+coord_cartesian(xlim=c(50,450))
+dev.off()
 
 
-# given that there are relatively few observations, and that latency differences are generally noisy, I use the median which is more robust and less influenced by single extreme points (call them "outliers" if you want)
+# given that there are relatively few observations, and that latency differences are generally noisy, I use the median which is more robust and less influenced by single extreme points
 medianDiff <- function(dd) median(dd$res_RT[dd$dir=="opposite to primary"])-median(dd$res_RT[dd$dir=="same as primary"])
 bootmedianDiffSE <- function(dd,nsim=1000){
   bootF <- function(dd,i) medianDiff(dd[i,])

@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, fig.path="./Figs/",message=FALSE,warning=FALSE)
 ```
 
-This file documents the analysis of saccadic eye movements of Experiment 1. The analysis of saccadic eye movements for the other experiments proceeded through the same steps reported here. 
+This file documents the analysis of saccadic eye movements of Experiment 1. The analysis of saccadic eye movements for the other experiments proceeded through the same steps reported here. (Note that this document may contain some additional analysis that, due to space limitations of the journal's format, were not included in the published article.)
 The preprocessing steps are reported exactly in the article, here I report the statistical analyses starting from a dataset containing saccades informations (onsets, offesets, latency, etc.). It requires some packages (all available on CRAN): lme4, optimx, numDeriv, ggplot2, plus some functions available [here](https://github.com/mattelisi/mlisi).
 The Matlab code for running the experiment that generated the data, as well as the analysis of raw gaze recordings is available [here](https://github.com/mattelisi/gaussianblobnoise-saccade).
 
@@ -41,14 +41,14 @@ d$sigma <- d$sigma / ppd
 d$gain <- d$sacXresp/abs(d$ecc * d$side - d$sacxOnset)
 d$sigmaf <- factor(round(d$sigma,digits=1))
 
-# remove "DC component" as in van Opstal & van Gisbergen, 1989, Vision Research, "Scatter in the metrics of saccades and properties of the collicular map"
-# for(i in 1:nrow(d)){
-# 	d$sacxOffset[i] <- d$sacxOffset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-# 	d$sacxOnset[i] <- d$sacxOnset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-# 	
-# 	d$sacyOffset[i] <- d$sacyOffset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-# 	d$sacyOnset[i] <- d$sacyOnset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
-# }
+#remove "DC component" as in van Opstal & van Gisbergen, 1989, Vision Research, "Scatter in the metrics of saccades and properties of the collicular map"
+for(i in 1:nrow(d)){
+	d$sacxOffset[i] <- d$sacxOffset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+	d$sacxOnset[i] <- d$sacxOnset[i] - mean(d$sacxOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+
+	d$sacyOffset[i] <- d$sacyOffset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+	d$sacyOnset[i] <- d$sacyOnset[i] - mean(d$sacyOnset[which(d$id==d$id[i] & d$session==d$session[i])],na.rm=T)
+}
 
 # signed saccade error
 d$tarX_s <- (d$ecc * d$side)
@@ -62,16 +62,16 @@ d$sacRT <- d$sacOnset
 round(mean(d$sacRT<100,na.rm=T) * 100, digits=4) # this compute the percentage of excluded trials
 d <- d[which(d$sacRT>=100),]
 
-# mistakes (i.e. saccades in the wrong direction)
-mean(sign(d$sacXresp_s) != sign(d$tarX_s),na.rm=T) * 100 # total prop. of directional errors
-d$dir_errors <- sign(d$sacXresp_s) != sign(d$tarX_s)
-tapply(d$dir_errors,list(d$sigmaf,d$id),mean,na.rm=T) * 100 # prop. of directional errors for each subject
+# # mistakes (i.e. saccades in the wrong direction)
+# mean(sign(d$sacXresp_s) != sign(d$tarX_s),na.rm=T) * 100 # total prop. of directional errors
+# d$dir_errors <- sign(d$sacXresp_s) != sign(d$tarX_s)
+# tapply(d$dir_errors,list(d$sigmaf,d$id),mean,na.rm=T) * 100 # prop. of directional errors for each subject
 
 # absolute error
 round(mean(d$sacErr>(d$tarX-2),na.rm=T) * 100, digits=2)
 d <- d[which(d$sacErr<(d$tarX-2)),]
 
-# remove unrealistic values of peak velocities (about 0.02%) perhaps due to blinks during the saccade
+# remove unrealistic values of peak velocities (about 0.02%) likely due to blinks
 mean(d$sacVPeak>5000,na.rm=T) * 100
 d <- d[which(d$sacVPeak<5000),]
 
@@ -213,11 +213,9 @@ dag$RTbin <- factor(dag$RTbin)
 summary(aov(gain~sigmaf*RTbin + Error(id/(sigmaf*RTbin)), dag ))
 ```
 
-### Saccadic range-effect depends on position uncertainty
+### Saccadic range-effect
 
-Here are reported the analysis of the range-effect, a form of central bias.
-
-First, we check whether saccade amplitudes toward the intermediate target (at 10deg eccentricity, which was present in both sessions) are influenced by the range. This test is motivated specifically by recent studies that reported no range effect for dot-like, clearly visible targets. We do that with a two-tailed t-test.
+Before modelling the saccadic range effect as a function of uncertainty (see script `range_effect.R`) we check whether saccade amplitudes toward the intermediate target (at 10deg eccentricity, which was present in both sessions) are influenced by the range. This test is motivated specifically by recent studies that reported no range effect for dot-like, clearly visible targets. We do that with a two-tailed t-test.
 ```{r range-test-1}
 dag <- aggregate(sacXresp ~ sigmaf+sigma + session +tarX + id, d, mean)
 l_sx <- with(dag,sacXresp[sigmaf=="0.3" & session=="large" & tarX==10])
@@ -230,264 +228,4 @@ We can check whether the range-effect, as measured by the differences across ses
 summary(aov(sacXresp ~ sigma*session + Error(id/(sigmaf*session)), dag[dag$tarX==10,]))
 ```
 
-The ANOVA indicates an interaction between $sigma$ (three levels, 0.3, 0.9 and 1.5 deg) and the session (large vs. small eccentricity range). 
-
-```{r range-prepare, echo=FALSE, results=FALSE}
-# This implements the correction to adjust for baseline differences (see Material and Methods, main text)
-
-d$sacXresp_c <- d$sacXresp
-
-barG <- aggregate(gain ~ id, d[d$sigmaf=="0.3",], mean)
-Gs1 <- aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==1,], mean)
-Gs2 <- aggregate(gain ~ id, d[d$sigmaf=="0.3" & d$session_number==2,], mean)
-
-for(i in 1:nrow(d)){
-    if(d$session_number[i]==1){
-		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG$gain[barG$id==d$id[i]]-Gs1$gain[Gs1$id==d$id[i]])
-	}else{
-		d$sacXresp_c[i] <- d$sacXresp[i] * (1+barG$gain[barG$id==d$id[i]]-Gs2$gain[Gs2$id==d$id[i]])
-	}
-}
-
-dag <- aggregate(cbind(sacXresp_c, sacXresp, gain) ~ tarX +sigmaf+sigma + session + id, d, mean)
-dag$se <- aggregate(sacXresp_c ~ tarX +sigmaf +sigma + session + id, d, bootMeanSE)$sacXresp_c
-
-# prepare the predictors for fitting the model
-d$mean_ecc <- ifelse(d$session=="large",11,9)
-d$cond1 <- dummy(d$sigmaf)[,"0.9"]
-d$cond2 <- dummy(d$sigmaf)[,"1.5"]
-d$ecc_diff <- d$mean_ecc - d$ecc
-
-```
-
-The interaction can be seen by plotting saccade amplitudes as a function of target distance and split by eccentricity range and values of $\sigma$. To reduce any confounds for this analysis we corrected individual values of saccade amplitudes by the mean effect of session order (see Methods section in the article for details). 
-
-```{r plot-range-0, echo=FALSE, fig.width=4, fig.height=2.5}
-dag2 <- aggregate(sacXresp_c ~ tarX +sigmaf + session, dag, mean)
-dag2$se <- aggregate(sacXresp_c ~ tarX +sigmaf + session, dag, bootMeanSE)$sacXresp_c
-
-#pdf("range_exp1_gain_v2.pdf",width=4.5,height=2)
-ggplot(dag2, aes(x=tarX,y=sacXresp_c,ymin=sacXresp_c-se,ymax=sacXresp_c+se,color=factor(session),group=session))+geom_abline(intercept=0,slope=1,lty=2,col="black",size=0.4)+geom_line()+geom_errorbar(width=0,alpha=1)+geom_point(pch=19,size=0.8)+nice_theme+scale_color_manual(values=c("black","dark grey"),name="eccentricity\nrange")+labs(x="target distance [deg]", y="saccade amplitude [deg]")+facet_grid(.~sigmaf)+scale_y_continuous(breaks=3:12,limits=c(6.8,11.5))#+scale_x_continuous(limits=c(6,13))
-#dev.off()
-```
-
-
-We assumed that range effect is a form of central bias, and estimated the amout of compression using a regression approach, where the saccade amplitude at trial $i$, $S_i$, is taken to be a linear function of a combination of mean eccentricity in the block, $\bar E$, and of the eccentricity at the current trial $E_i$. The model can be expressed as:
-$$\begin{align}
-  {\hat S}_i &= {\beta _0} + {\beta _1}\left[ {\alpha \bar E + \left( {1 - \alpha } \right){E_i}} \right] \\ 
-   &= {\beta _0} + {\beta _1}\left[ {\alpha \bar E + E - \alpha {E_i}} \right] \\ 
-   &= {\beta _0} + {\beta _1}{E_i} - {\beta _1}\alpha \left( {\bar E - {E_i}} \right) \\ 
-   &= {\beta _0} + {\beta _1}{E_i} - {\beta _2}\left( {\bar E - {E_i}} \right) \\ 
-\end{align}$$
-We have expanded its formula to show that it can be estimated as a traditional regression model, with the current eccentricity $E_i$ and the difference of the current eccentricity from the mean of the session ${\bar E - {E_i}}$ as linear predictors. The parameter $\alpha$, which indicate the proportion of compression, is the obtained as the ratio of the two coefficients $\alpha=\frac{\beta_2}{\beta_1}$. 
-
-We have estimated a multilevel version of this model, with a fully parametrized variance-covariance matrix, using Stan (http://mc-stan.org) through its R interfaces RStan(http://mc-stan.org/rstan/) and rstanarm (http://mc-stan.org/rstanarm/index.html). We have used MCMC sampling (specifically Hamiltonian Monte Carlo, as implemented in Stan) to draw samples from the posterior distribution of the 
-
-```{r range-model}
-library(rstanarm)
-# ecc_diff is the difference from the mean, \bar E - E_i
-# cond1 and cond2 are dummy variables that indicate the conditions with sigma=0.9 and 1.5, respectively
-
-## Set weakly informative priors.
-#
-# Thecoefficient of the model (fixed-effects) will be:
-# [1] "(Intercept)"    "ecc"            "cond1"          "cond2"         
-# [5] "ecc_diff"       "ecc:cond1"      "ecc:cond2"      "cond1:ecc_diff"
-# [9] "cond2:ecc_diff"
-#
-# The priors are normal, roughly based on the estimates of the linear model (m1) above
-# but with quite large standard deviations.
-# The prior for ecc_diff are weakly regularizing and centered on 0
-# For example: the prior for the gain in the condition with smallest uncertainty 
-# is a Normal centered at 0.9, with a standard deviation of 1.5
-weak_prior_intercept = normal(location=0, scale=3, autoscale=F)
-#                                 2  3  4  5      6      7  8  9
-weakPriors <- normal(location=c(0.9, 0, 1, 0, -0.05, -0.15, 0, 0),
-                     scale =  c(1.5, 1, 1, 1,     1,     1, 2, 2), autoscale=F)
-
-# fit the model (4 chains, 1000 samples each)
-if(!file.exists("./data/exp1_rangeFit_v2.RData")){
-  lmm0_HMC <- stan_lmer(sacXresp_c ~ ecc + cond1 + cond2 + ecc_diff 
-                        + ecc:cond1 + ecc:cond2 
-                        + ecc_diff:cond1 + ecc_diff:cond2 
-                        + (ecc + cond1 + cond2 + ecc_diff 
-                           + ecc:cond1 + ecc:cond2 
-                           + ecc_diff:cond1 + ecc_diff:cond2 | id), 
-                        data = d, cores = 6, iter = 500, chain=6, 
-                        prior = weakPriors, 
-                        prior_intercept = weak_prior_intercept)
-  # prior_summary(lmm0_HMC)$prior
-  save(lmm0_HMC, file="./data/exp1_rangeFit_v2.RData")
-}else{
-  load("./data/exp1_rangeFit_v2.RData")
-}
-
-# this is just an helper function to extract the values of the compression parameter (alpha)
-compAlphas_rstanarm <- function(.) {
-  tab <- fixef(.)
-  a1 <- tab["ecc_diff"] / tab["ecc"]
-  a2 <- (tab["ecc_diff"]+tab["cond1:ecc_diff"]) / (tab["ecc"]+tab["ecc:cond1"])
-  a3 <- (tab["ecc_diff"]+tab["cond2:ecc_diff"]) / (tab["ecc"]+tab["ecc:cond2"])
-  alpha <- c(a1,a2,a3)
-  cond <- c("a1","a2","a3")
-  post_samples <- as.data.frame(.)[,c("ecc_diff","ecc","cond1:ecc_diff","cond2:ecc_diff","ecc:cond1","ecc:cond2")]
-  post_samples$a1 <- post_samples$ecc_diff / post_samples$ecc
-  post_samples$a2 <- (post_samples$ecc_diff + post_samples$'cond1:ecc_diff') / (post_samples$ecc+post_samples$'ecc:cond1')
-  post_samples$a3 <- (post_samples$ecc_diff + post_samples$'cond2:ecc_diff') / (post_samples$ecc+post_samples$'ecc:cond2')
-  alpha_se <- c(sd(post_samples$a1), sd(post_samples$a2), sd(post_samples$a3))
-  CI_lb <- c(quantile(post_samples$a1, probs = 0.025,na.rm=T), quantile(post_samples$a2, probs = 0.025,na.rm=T), quantile(post_samples$a3, probs = 0.025,na.rm=T))
-  CI_ub <- c(quantile(post_samples$a1, probs = 0.975,na.rm=T), quantile(post_samples$a2, probs = 0.975,na.rm=T), quantile(post_samples$a3, probs = 0.975,na.rm=T))
-  out <- data.frame(cond, alpha, se=alpha_se, CI_lb, CI_ub)
-  return(out)
-}
-
-alpha_d_HMC <- compAlphas_rstanarm(lmm0_HMC)
-alpha_d_HMC$sigmaf <- c("0.3","0.9","1.5")
-alpha_d_HMC$sigma <- sort(unique(d$sigma))
-
-```
-
-A plot of the compression parameters:
-
-```{r plot-range-1, echo=F, fig.width=2, fig.height=2}
-#pdf(file="compression_exp1.pdf",height=1.4,width=1.3)
-ggplot(alpha_d_HMC, aes(x=sigma,y=alpha,ymin=alpha-se,ymax=alpha+se,group=1,color=sigmaf))+geom_hline(yintercept=0,lty=2,size=0.4)+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y=expression(paste("central bias [",alpha,"]")))+scale_x_continuous(limits=c(0.2,1.7),breaks=c(0.3,0.9,1.5))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)
-#dev.off()
-```
-
-A table with parameters, standard errors, and Bayesian 95% credible intervals
-```{r tab-range-1}
-print(alpha_d_HMC,digits=2)
-```
-
-
-
-## Secondary saccade analysis
-
-The code (see .Rmd file) will reload the original dataset and perform the same cut offs, and export a table with only parameters of secondary saccades.
-
-```{r, echo=FALSE,message=FALSE}
-# load data & prepare dataset of primary saccades
-d <- read.table("./data/exp1_saccade.txt",header=T,sep="\t")
-
-# prel
-d <- d[d$sacType==1,]
-d <- d[!is.na(d$sacVPeak),] #
-
-# prepare data
-d$tarX <- abs(d$ecc * d$side)
-d$sacXresp <- abs(d$sacxOffset - d$sacxOnset)
-ppd <- 50.1079
-d$sigma <- d$sigma / ppd
-d$gain <- d$sacXresp/abs(d$ecc * d$side - d$sacxOnset)
-d$sigmaf <- factor(round(d$sigma,digits=1))
-d$id <- substr(d$vpcode,3,4)
-d$id_n <- as.numeric(substr(d$vpcode,1,2))
-
-# signed saccade error
-d$tarX_s <- (d$ecc * d$side)
-d$sacXresp_s <- (d$sacxOffset - d$sacxOnset)
-d$sacErr <- sqrt((d$sacxOffset-d$tarX_s)^2 + d$sacyOffset^2)
-d$sacErr_x <- d$sacxOffset - d$tarX_s
-
-## rt cut off
-d$sacRT <- d$sacOnset # onset is measured wrt target, while RT wrt previous (micro)saccade
-round(mean(d$sacRT<100,na.rm=T) * 100, digits=4)
-d <- d[d$sacRT>=100,]
-
-#
-d <- d[d$blink==0,]
-
-# absolute error
-err_exl <- round(mean(d$sacErr>(d$tarX-2)) * 100, digits=2)
-d <- d[d$sacErr<(d$tarX-2),]
-
-# adaptive amplitude filter
-filter_group <- paste(d$id, d$sigmaf, d$tarX, sep="_")
-out_index <- outfilter(d$sacXresp, filter_group, nsd=3)
-adap_exl <- round(length(out_index)/nrow(d) * 100,digits=2)
-d <- d[-out_index,]
-
-### normalize saccade responses !!! ###
-d$sacXresp <- d$tarX * d$gain
-
-# make a unique label to identify each trial
-d$unique_trial <- paste(d$vpcode, d$block, d$session, d$trial3, sep="_")
-any(tapply(d$gain, d$unique_trial, length)>1) # sanity check
-
-# ------------------------------------------------------------------------------ #
-# create merged dataset with secondary saccades
-d2 <- read.table("./data/exp1_saccade.txt",header=T,sep="\t")
-d2 <- d2[d2$sacType==2,]
-
-# prepare d2ata
-d2$tarX <- abs(d2$ecc * d2$side)
-d2$sacXresp <- abs(d2$sacxOffset - d2$sacxOnset)
-d2$sigma <- d2$sigma / ppd
-d2$gain <- d2$sacXresp/abs(d2$ecc * d2$side - d2$sacxOnset)
-d2$sigmaf <- factor(round(d2$sigma,digits=1))
-d2$id <- substr(d2$vpcode,3,4)
-d2$id_n <- as.numeric(substr(d2$vpcode,1,2))
-
-#
-d2$tarX_s <- (d2$ecc * d2$side)
-d2$sacXresp_s <- (d2$sacxOffset - d2$sacxOnset)
-d2$sacErr <- sqrt((d2$sacxOffset-d2$tarX_s)^2 + d2$sacyOffset^2)
-
-# trial label
-d2$unique_trial <- paste(d2$vpcode, d2$block, d2$session, d2$trial3, sep="_")
-
-d2$primary_error <- NA
-d2$primary_xerror <- NA 
-d2$primary_RT <- NA
-d2$primary_xresp <- NA
-d2$primary_xresp_s <- NA
-
-for(i in 1:nrow(d2)){
-	d1t <- d[which(d$unique_trial == d2$unique_trial[i]),]
-	if(nrow(d1t)>0){
-		d2$primary_error[i] <- d1t$sacErr
-		d2$primary_xerror[i] <- d1t$sacErr_x
-		d2$primary_RT[i] <- d1t$sacRT
-		d2$primary_xresp[i] <- d1t$sacXresp
-		d2$primary_xresp_s[i] <- d1t$sacXresp_s
-	}else{
-		d2$primary_error[i] <- NA
-		d2$primary_xerror[i] <- NA
-		d2$primary_RT[i] <- NA
-		d2$primary_xresp[i] <- NA
-		d2$primary_xresp_s[i] <- NA
-	}
-}
-sum(!is.na(d2$primary_RT)) / nrow(d2)
-
-# secondary saccade dataset !
-d2 <- d2[!is.na(d2$primary_RT),]
-d2$s2_dir <- ifelse(d2$sameDir==1, "same as primary", "opposite to primary")
-d2$primary_xerr_sacdir <- d2$primary_xerror * d2$side
-d2$undershoot <- ifelse(d2$primary_xerr_sacdir<=0,1,0) 
-d2$undershoot_label <- ifelse(d2$undershoot==1, "after\nundershoot", "after\novershoot")
-d2$sacXresp_sacdir <- d2$sacXresp_s * sign(d2$primary_xresp_s)
-
-# save for global analysis 
-write.table(d2, file="secondary_exp1_nocutoff.txt")
-
-d2$corrective <- ifelse(d2$errorChange< 3,1,0)
-d2 <- d2[d2$corrective==1,]
-write.table(d2, file="./data/secondary_exp1.txt",quote=F, sep="\t")
-
-# also
-d2 <- d2[d2$sacNumberAfterPrimary==2,]
-d2 <- d2[d2$sacRT>=30,]
-```
-
-Plot latency and amplitude of correctuive saccades
-
-```{r, echo=FALSE, fig.width=6,fig.height=2.5}
-dag <- aggregate(sacRT ~ sigmaf + s2_dir, d2, mean)
-ggplot(d2, aes(x=sacRT, fill=sigmaf))+geom_histogram(binwidth=25,alpha=0.85)+geom_vline(data=dag, aes(xintercept=sacRT, color=sigmaf))+nice_theme+labs(x="secondary saccade latency [ms]")+scale_fill_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")))+scale_color_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")))+facet_grid(s2_dir~sigmaf)
-```
-
-```{r, echo=FALSE, fig.width=6,fig.height=2.5}
-ggplot(d2, aes(x=primary_xerr_sacdir,y=sacXresp_sacdir, color=sigmaf))+geom_vline(xintercept=0,size=0.2,lty=2)+geom_hline(yintercept=0,size=0.2,lty=2)+nice_theme+labs(x="primary saccade error [deg]", y="seconday saccade\namplitude [deg]")+geom_abline(slope=-1,intercept=0,size=0.2, lty=1)+geom_point(pch=21,size=1)+scale_color_manual(values=c("black","dark grey", "blue"),name=expression(paste(sigma[blob]," [deg]")),guide=F)+facet_grid(.~sigmaf)+scale_y_continuous(breaks=seq(-50, 50, 2),limits=c(-5,5))+scale_x_continuous(breaks=seq(-50, 50, 2),limits=c(-5,5))+coord_equal()  
-```
+The ANOVA indicates an interaction between $sigma$ (three levels, 0.3, 0.9 and 1.5 deg) and the session (large vs. small eccentricity range). The same analysis was run on the data from Experiment 3 (not shown here).

@@ -1,6 +1,9 @@
-This repository contains the data and code used in the statistical analyses of the upcoming article "Evidence for a probabilistic strategy in saccadic gain control", by Matteo Lisi, Joshua A. Solomon and Michael J. Morgan.
+This repository contains the data and code used in the statistical analyses of the upcoming article "Gain control of saccadic eye movements is probabilistic", by Matteo Lisi, Joshua A. Solomon and Michael J. Morgan.
 
-Analysis are documented through Rmarkdown notebooks (`.Rmd`), rendered to Html output. The repository contains one file demonstrating the analysis of the perceptual task of experiment 1 (see `exp1_perception.html`) and one file demonstrating the analysis of saccade data of experiment 1 (`exp1_saccade.html`). The analysis of saccade data for experiment 2 and 3 used the same steps and methods, and is not described in detail. Finally, there is one last file demonstrating in detail the modelling of the cost function for all the three saccade experiments (`cost_asymmetry.html`): note that the code doing the model fitting is reported in a separate R script (`analysis_cost_asymmetry.R`) and it requires a set of functions that are containted in the file `asymCostFitFunctions.R`.
+Analysis are documented through Rmarkdown notebooks (`.Rmd`), rendered to Html output. The repository contains one file demonstrating the analysis of the perceptual task of experiment 1 (see `exp1_perception.html`) and one file demonstrating the main analyses of saccade data of experiment 1 (`exp1_saccade.html`); the analysis of saccade data for experiment 2 and 3 used the same steps and methods, and is not reported here. There is also one script demonstrating the analysis of the range-effect in Experiment 1 and 3, `rangeEffect.R`; the hierarchical Bayesian model used in this analysis was written in Stan and is defined in the file `range_model.stan`.
+Finally, there is one last file demonstrating in detail the modelling of the cost function for all the three saccade experiments (`analysis_cost_asymmetry.R`), and another one that illustrate the analysis of secondary saccades  (`secondary_saccades_analysis.R`).
+
+Some of the analyses use custom functions from a library (`mlisi`) that I made to keep organized my frequently used functions, which is available here: [https://github.com/mattelisi/mlisi](https://github.com/mattelisi/mlisi)
 
 The `data` folders contains the raw datasets (and any intermediate output of the analysis scripts). In particular, the raw datasets are:
 - `exp1_perception.txt`, data of perceptual task, exp. 1
@@ -13,4 +16,4 @@ The `data` folders contains the raw datasets (and any intermediate output of the
 
 All dataset are in tab-separated text format, and the first line of each dataset indicate the variable names, which should be (hopefully) self-explanatory. The raw gaze recording files (Eyelink `edf` format) are not included in this repository, but are available upon request. The matlab code used to process raw gaze recordings and identify saccades is available at this GitHub repository [github.com/mattelisi/gaussianblobnoise-saccade](https://github.com/mattelisi/gaussianblobnoise-saccade). 
 
-For any questions, please feel free to drop a line at: matteo.lisi@city.ac.uk.
+For any questions, please feel free to drop a line at: matteo.lisi@city.ac.uk

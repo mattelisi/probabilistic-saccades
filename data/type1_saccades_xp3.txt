@@ -1,0 +1,1 @@
+session	block	trial3	side	ecc	tarDur	sigma	soa	tedfTOn	tedfSac	tedfTOf	PeakLum	sacRT	sacOnset	sacOffset	sacDur	sacVPeak	sacDist	sacxOnset	sacyOnset	sacxOffset	sacyOffset	errorChange	largerAmp	blink	id	id_n	tarX	sacXresp	gain	sigmaf	tarX_s	sacXresp_s	sacErr	posu	plf	session_number
