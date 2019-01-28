@@ -36,7 +36,9 @@ model {
 
   //likelihood
   for (i in 1:N){
-    mu = beta[posu[i]] + beta[3+posu[i]]*(alpha[posu[i]] * meanE[i] + (1-alpha[posu[i]])*E[i]);
+    mu = beta[posu[i]] +u[posu[i],id[i]]  
+        +(beta[3+posu[i]] +u[3+posu[i],id[i]]) 
+        *((alpha[posu[i]]+u[6+posu[i],id[i]]) * meanE[i] + (1-(alpha[posu[i]]+u[6+posu[i],id[i]]))*E[i]);
     S[i] ~ normal(mu, sigma_e);
   }
 }

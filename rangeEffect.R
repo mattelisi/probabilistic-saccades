@@ -53,14 +53,16 @@ dxp1 <- list(N=nrow(d_exp1),
 # run sampling - exp1
 library(rstan)
 options(mc.cores = parallel::detectCores()) # tell stan to use multiple cores
-# m_stan <- stan(file = "range_model.stan", data = dxp1, iter = 2000, chains = 4) # This run MCMC sampling
-# saveRDS(m_stan,file="rangemodel_exp1.rds")
-m_stan <- readRDS("rangemodel_exp1.rds") # load results if already run
+#m_stan <- stan(file = "range_model.stan", data = dxp1, iter = 2000, chains = 4, control = list(adapt_delta = 0.99,max_treedepth = 15)) # This run MCMC sampling
+#saveRDS(m_stan,file="./data/rangemodel_exp1.rds")
+m_stan <- readRDS("./data/rangemodel_exp1.rds") # load results if already run
 
 # some plots to evaluate convergence
 traceplot(m_stan, pars = c("beta"), inc_warmup = F)
 traceplot(m_stan, pars = c("alpha"), inc_warmup = F)
 print(m_stan, pars = c("alpha"), probs = c(0.025, 0.975),digits=3)
+print(m_stan, pars = c("u"), probs = c(0.025, 0.975),digits=3)
+print(m_stan, pars = c("beta"), probs = c(0.025, 0.975),digits=3)
 
 # data from experiment 3
 d_exp3 <- d[d$exp=="exp3",]
@@ -78,7 +80,7 @@ dxp3 <- list(N=nrow(d_exp3),
              meanE=ifelse(d_exp3$session=="small",8,11))
 
 # run sampling - exp3
-#m_stan3 <- stan(file = "range_model.stan", data = dxp3, iter = 2000, chains = 4) # This run MCMC sampling
+#m_stan3 <- stan(file = "range_model.stan", data = dxp3, iter = 2000, chains = 4, control = list(adapt_delta = 0.99,max_treedepth = 15)) # This run MCMC sampling
 #saveRDS(m_stan3,file="rangemodel_exp3.rds")
 m_stan3 <- readRDS("rangemodel_exp3.rds") 
 
@@ -101,16 +103,18 @@ predict_range_model <- function(m,nd){
   beta <- extract(m, pars = "beta")$beta 
   alpha <- extract(m, pars = "alpha")$alpha 
   nd$mu<-rep(NA,nrow(nd))
-  nd$lb <- nd$mu; nd$ub <- nd$mu
+  nd$lb <- nd$mu; nd$ub <- nd$mu; nd$se <- nd$mu
   for(i in 1:nrow(nd)){
     y_ <- beta[,nd$posu[i]] + beta[,3+nd$posu[i]]*(alpha[,nd$posu[i]] * nd$meanE[i] + (1-alpha[,nd$posu[i]])*nd$E[i])
     nd$mu[i] <- mean(y_)
     nd$lb[i] <- quantile(y_, probs = 0.05/2)
     nd$ub[i] <- quantile(y_, probs = 1-0.05/2)
+    nd$se[i] <- sd(y_)
   }
   nd$mu_gain <- nd$mu / nd$E
   nd$lb_gain <- nd$lb / nd$E
   nd$ub_gain <- nd$ub / nd$E
+  nd$se_gain <- nd$se / nd$E
   return(nd)
 }
 
@@ -154,8 +158,12 @@ dag$lb_gain <- dag$gain_2 - dag$se
 dag$ub_gain <- dag$gain_2 + dag$se
 dag$E <- dag$tarX
 
-pdf("range_withPredictions.pdf",width=4,height=2.5)
-ggplot(dag, aes(x=E, y=mu_gain, ymin=lb_gain, ymax=ub_gain, group=session, color=session,fill=session))+geom_ribbon(data=nd,alpha=0.4,color=NA)+geom_line(data=nd,size=0.3)+geom_errorbar(width=0,size=0.4)+geom_point(pch=21,size=0.8,fill=NA)+facet_grid(exp~posu)+nice_theme+scale_color_manual(values=c("black","dark grey"))+scale_fill_manual(values=c("black","dark grey"))+labs(x="target distance [deg]", y="saccadic gain")
+# this if you want to plot SE instead of credible intervals
+nd$lb_gain <- nd$mu_gain - nd$se_gain
+nd$ub_gain <- nd$mu_gain + nd$se_gain
+
+pdf("./Figs/range_withPredictions.pdf",width=4,height=2.5)
+ggplot(dag, aes(x=E, y=mu_gain, ymin=lb_gain, ymax=ub_gain, group=session, color=session,fill=session))+geom_ribbon(data=nd,alpha=0.3,color=NA)+geom_line(data=nd,size=0.3)+geom_errorbar(width=0,size=0.4)+geom_point(pch=21,size=0.8,fill=NA)+facet_grid(exp~posu)+nice_theme+scale_color_manual(values=c("black","dark grey"))+scale_fill_manual(values=c("black","dark grey"))+labs(x="target distance [deg]", y="saccadic gain")
 dev.off()
 
 # now plot alpha parameters (proportion of compression)
@@ -168,11 +176,11 @@ x3 <- sort(unique(d_exp3$PL),decreasing=T)
 da1 <- data.frame(x=x1, alpha=apply(alpha_1,2,mean), se=apply(alpha_1,2,sd),x_f=factor(round(x1,digits=1)))
 da3 <- data.frame(x=x3, alpha=apply(alpha_3,2,mean), se=apply(alpha_3,2,sd),x_f=factor(round(x3)))
 
-pdf(file="compression_exp1.pdf",height=1.3,width=1.2)
+pdf(file="./Figs/compression_exp1.pdf",height=1.3,width=1.2)
 ggplot(da1, aes(x=x_f,y=alpha,ymin=alpha-se,ymax=alpha+se,group=1,color=x_f))+geom_hline(yintercept=0,lty=2,size=0.4)+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste(sigma," [deg]")), y=expression(paste("central bias [",alpha,"]")))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)
 dev.off()
 
 da3$x_f <- factor(da3$x_f, levels=c("146","57","50"))
-pdf(file="compression_exp3.pdf",height=1.3,width=1.2)
+pdf(file="./Figs/compression_exp3.pdf",height=1.3,width=1.2)
 ggplot(da3, aes(x=x_f,y=alpha,ymin=alpha-se,ymax=alpha+se,group=1,color=x_f))+geom_hline(yintercept=0,lty=2,size=0.4)+geom_line(color="black")+geom_errorbar(width=0,alpha=1,color="black")+geom_point(size=2.3)+nice_theme+labs(x=expression(paste("lum. [cd/",m^2,"]")), y=expression(paste("central bias [",alpha,"]")))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)
 dev.off()
