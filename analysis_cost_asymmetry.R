@@ -109,12 +109,24 @@ for(i in unique(d$id_i)){
 
 ### --------------------------------------------------------------------------------------- ###
 # save results
-write.table(dfit, file="./data/fit_all_multi_v2.txt")
-write.table(dtestfit, file="./data/test_fit_all_multi_v2.txt")
+#write.table(dfit, file="./data/fit_all_multi_v2.txt")
+#write.table(dtestfit, file="./data/test_fit_all_multi_v2.txt")
 cat("...done!\n")
 
 dfit <- read.table("./data/fit_all_multi_v2.txt")
 dtestfit <- read.table("./data/test_fit_all_multi_v2.txt")
+
+# 
+dag_alpha <- aggregate(alpha~id+exp, dfit, mean)
+median(dag_alpha$alpha[dag_alpha$exp=="exp1"])
+median(dag_alpha$alpha[dag_alpha$exp=="exp2"])
+median(dag_alpha$alpha[dag_alpha$exp=="exp3"])
+
+library(mlisi)
+bootFooCI(dag_alpha$alpha[dag_alpha$exp=="exp1"], nsim=10^4, foo="median")
+bootFooCI(dag_alpha$alpha[dag_alpha$exp=="exp2"], nsim=10^4, foo="median")
+bootFooCI(dag_alpha$alpha[dag_alpha$exp=="exp3"], nsim=10^4, foo="median")
+
 
 ### --------------------------------------------------------------------------------------- ###
 # some summary plots
@@ -161,7 +173,8 @@ dfit_avg <- aggregate(cbind(ideal_gain,observed_gain)~exp+posu,dfit,mean)
 
 ## 1
 pdf("predicted_gain_split_R1.pdf",width=5,height=3)
-ggplot(dfit, aes(x=ideal_gain,y=observed_gain,ymin=observed_gain-observed_gain_se,ymax=observed_gain+observed_gain_se,color=factor(posu),shape=shape))+geom_abline(intercept=0,slope=1,lty=2,size=0.4)+geom_point(size=1,alpha=0.8)+coord_equal(xlim=c(0.7,1.12),ylim=c(0.7,1.12))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="predicted gain",y="observed gain")+facet_grid(exp~posu)+scale_shape_manual(values=c(21,19,17,15,22,15),name=NULL)+geom_hline(data=dfit_avg,aes(yintercept=observed_gain,color=factor(posu)),size=0.4,lty=3)+geom_vline(data=dfit_avg,aes(xintercept=ideal_gain,color=factor(posu)),size=0.4,lty=3)
+ggplot(dfit, aes(x=ideal_gain,y=observed_gain,ymin=observed_gain-observed_gain_se,ymax=observed_gain+observed_gain_se,color=factor(posu),shape=shape))+geom_abline(intercept=0,slope=1,lty=2,size=0.4)+geom_point(size=1,alpha=0.8)+coord_equal(xlim=c(0.7,1.12),ylim=c(0.7,1.12))+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="predicted gain",y="observed gain")+facet_grid(exp~posu)+scale_shape_manual(values=c(21,19,17,15,22,15),name=NULL)+geom_hline(data=dfit_avg,aes(yintercept=observed_gain,color=factor(posu)),size=0.4,lty=3)+geom_vline(data=dfit_avg,aes(xintercept=ideal_gain,color=factor(posu)),size=0.4,lty=3)### --------------------------------------------------------------------------------------- ###
+
 #+geom_errorbar(width=0,color="grey")
 dev.off()
 
@@ -190,85 +203,3 @@ pdf("all_individual_fits_R1.pdf",width=3,height=2.4)
 ggplot(dfit_i, aes(x=STD,y=observed_gain,color=factor(posu),shape=shape,group=id))+geom_line(data=nd_i,aes(x=STD,y=gain),col="black")+geom_errorbar(aes(ymin=observed_gain-1.96*observed_gain_se,ymax=observed_gain+1.96*observed_gain_se),width=0)+geom_point(size=1.5)+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+nice_theme+labs(x="gain SD (model-based estimate)",y="observed gain")+scale_shape_manual(values=c(21,19,17,15,22,15),guide=F)+facet_grid(id_n~exp)+coord_cartesian(xlim=c(0.05,0.23),ylim=c(0.7,0.95))+scale_x_continuous(breaks=seq(0,0.3,0.1))
 dev.off()
 
-### --------------------------------------------------------------------------------------- ###
-# secondary saccades (old cost analysis)
-
-d2 <- read.table("./data/secondary_saccades_xp123_allfit.txt",sep="\t",header=T)
-
-# explo plot
-ggplot(d2, aes(x=rt,y=errorChange, color=factor(sacN_1)))+geom_hline(yintercept=0,size=0.2,lty=2)+nice_theme+labs(x="latency", y="change in position error")+geom_point(pch=21,size=1)+facet_grid(.~posu)
-
-# cut offs
-d2$corrective <- ifelse(d2$errorChange< 2.5 & d2$errorChange>-2.5, 1, 0)
-d2 <- d2[d2$sacN_1==2,]
-
-ggplot(d2, aes(x=rt,y=errorChange, color=corrective))+geom_hline(yintercept=0,size=0.2,lty=2)+nice_theme+labs(x="latency", y="change in position error")+geom_point(pch=21,size=1)+facet_grid(.~posu)
-
-d2 <- d2[d2$corrective==1,]
-d2 <- d2[d2$rt>=30 ,]
-
-# plot overall latencies distributions
-d2$dir2 <- ifelse(d2$dir=="opposite to primary","backward","forward")
-dag <- aggregate(rt ~ posu + dir + dir2, d2, mean)
-pdf("secondary_RT_hist.pdf",width=4,height=2.2)
-ggplot(d2, aes(x=rt, fill=factor(posu)))+geom_histogram(binwidth=10,alpha=0.85)+geom_vline(data=dag, aes(xintercept=rt, color=factor(posu)))+nice_theme+labs(x="secondary saccade latency [ms]")+scale_fill_manual(values=c("black","dark grey", "blue"),guide=F)+scale_color_manual(values=c("black","dark grey", "blue"),guide=F)+facet_grid(dir2~posu)
-dev.off()
-
-# plot as cumulative distributions
-pdf("secondary_RT_ECDF.pdf",width=4.8,height=1.8)
-ggplot(d2, aes(x=rt,group=dir2,color=factor(posu),linetype=dir2))+geom_hline(yintercept=0.5,size=0.2,color="light grey",lty=1)+geom_vline(xintercept=seq(100,1000,100),size=0.2,color="light grey",lty=1)+ stat_ecdf(geom = "step",size=0.6)+facet_grid(.~posu)+nice_theme+scale_color_manual(values=c("black","dark grey","blue"),guide=F)+labs(y="cumulative probability",x="secondary saccade latency [ms]")+scale_linetype_manual(values=c(2,1),name="direction")+scale_x_continuous(breaks=seq(100,1000,100))+coord_cartesian(xlim=c(50,450))
-dev.off()
-
-
-# given that there are relatively few observations, and that latency differences are generally noisy, I use the median which is more robust and less influenced by single extreme points
-medianDiff <- function(dd) median(dd$res_RT[dd$dir=="opposite to primary"])-median(dd$res_RT[dd$dir=="same as primary"])
-bootmedianDiffSE <- function(dd,nsim=1000){
-  bootF <- function(dd,i) medianDiff(dd[i,])
-  bootRes <- boot::boot(dd,bootF,nsim)
-  return(sd(bootRes$t,na.rm=T))
-}
-
-# fit model at group level, including quadratic component
-library(lme4)
-library(MASS)
-
-m2all <- lmer(rt ~ ampli + I(ampli^2) + (ampli+I(ampli^2)|id) + exp, d2)
-
-summary(m2all)
-d2$res_RT <- residuals(m2all)
-
-# pair values (alpha & sacc. pars.)
-d2$id <- paste(d2$id, d2$exp,sep="_")
-d_a <- aggregate(alpha ~ id + exp, dfit, mean)
-d_a$alpha_se <- aggregate(alpha_se ~ id + exp, dfit, mean)$alpha_se
-d_a$id <- paste(d_a$id, d_a$exp,sep="_")
-
-d_a$RTdiff <- NA
-d_a$RTdiff_se <- NA
-d_a$errdiff <- NA
-d_a$errChangediff <- NA
-
-for(i in unique(d_a$id)){
-  
-  dd <- d2[d2$id==i,]
-  
-  d_a$RTdiff[d_a$id==i] <- medianDiff(dd)
-  d_a$RTdiff_se[d_a$id==i] <- bootmedianDiffSE(dd,nsim=1000)
-}
-
-d_a$cost_ratio <- d_a$alpha / (1-d_a$alpha)
-d_a$log_cost_ratio <- log(d_a$cost_ratio)
-
-# measure correlation
-mean(d_a$RTdiff)
-bootMeanCI(d_a$RTdiff)
-sum(d_a$RTdiff_se>=60)
-with(d_a[d_a$RTdiff_se<60,], cor.test(log_cost_ratio, RTdiff))
-
-pdf("cost_corr_1.pdf",width=5,height=1.8)
-ggplot(d_a[d_a$RTdiff_se<60,], aes(x=log_cost_ratio,y=RTdiff,ymax=RTdiff+RTdiff_se,ymin=RTdiff-RTdiff_se))+geom_hline(yintercept=0,lty=3,col="grey",size=0.4)+stat_ellipse(type="norm",level=0.75,col="grey",size=0.3)+stat_ellipse(type="norm",level=0.95,col="grey",size=0.3)+geom_errorbar(width=0,color="dark grey")+geom_point(size=1.5,pch=19)+nice_theme+labs(x=expression(paste("log"," ", bgroup("(",frac(italic("cost overshoot"),italic("cost undershoot")),")"))), y="secondary saccades\nlatency difference [ms]")+facet_grid(.~exp)+coord_cartesian(ylim=c(-150,200))
-dev.off()
-
-pdf("cost_corr_2.pdf",width=2,height=2)
-ggplot(d_a[d_a$RTdiff_se<60,], aes(x=log_cost_ratio,y=RTdiff,ymax=RTdiff+RTdiff_se,ymin=RTdiff-RTdiff_se,color=exp))+geom_hline(yintercept=0,lty=2,col="grey",size=0.5)+stat_ellipse(type="norm",level=0.75,col="grey",size=0.3)+stat_ellipse(type="norm",level=0.95,col="grey",size=0.3)+geom_errorbar(width=0,color="dark grey")+geom_point(size=2,pch=19)+geom_point(size=2.05,pch=21,color="black")+nice_theme+labs(x=expression(paste("log"," ", bgroup("(",frac(italic("cost overshoot"),italic("cost undershoot")),")"))), y="secondary saccades\nlatency difference [ms]")+scale_color_viridis_d(begin=0,end=0.7)+scale_y_continuous(breaks=seq(-200,200,50))+scale_x_continuous(breaks=seq(-3,6,1))
-dev.off()
