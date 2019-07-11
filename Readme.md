@@ -16,4 +16,4 @@ The `data` folders contains the raw datasets (and any intermediate output of the
 
 All dataset are in tab-separated text format, and the first line of each dataset indicate the variable names, which should be (hopefully) self-explanatory. The raw gaze recording files (Eyelink `edf` format) are not included in this repository, but are available upon request. The matlab code used to process raw gaze recordings and identify saccades is available at this GitHub repository [github.com/mattelisi/gaussianblobnoise-saccade](https://github.com/mattelisi/gaussianblobnoise-saccade). 
 
-For any questions, please feel free to drop a line at: matteo.lisi@city.ac.uk
+For any questions, please feel free to drop a line at: matteo_lisi (at) yahoo.it
